@@ -60,3 +60,4 @@ coverage
 build-doc
 
 db
+zlog-cls-bench

@@ -3,6 +3,7 @@
 #include <random>
 #include <sstream>
 #include <map>
+#include <mutex>
 #include <unordered_map>
 
 class RAMBackend : public Backend {

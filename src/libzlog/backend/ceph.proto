@@ -71,3 +71,14 @@ message LogEntry {
   optional Flags flags = 1 [default = DEFAULT];
   optional bytes data = 2;
 }
+
+message LogEntryV2 {
+    enum Flags {
+        DEFAULT = 0;
+        INVALIDATED = 1;
+        TRIMMED = 2;
+    }
+    optional Flags flags = 1 [default = DEFAULT];
+    optional uint64 offset = 2 [default = 0];
+    optional uint64 length = 3 [default = 0];
+};

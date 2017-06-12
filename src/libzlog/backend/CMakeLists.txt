@@ -31,7 +31,7 @@ install(TARGETS zlog_backend_ceph DESTINATION lib)
 endif(BUILD_CEPH_BACKEND)
 
 if(HAVE_RADOS_OBJECT_CLASS_H)
-  add_library(cls_zlog SHARED cls_zlog.cc ${PROTO_SRCS} ${PROTO_HDRS})
+  add_library(cls_zlog SHARED cls_zlog_v2.cc ${PROTO_SRCS} ${PROTO_HDRS})
   target_link_libraries(cls_zlog ${PROTOBUF_LIBRARIES})
   set_target_properties(cls_zlog PROPERTIES
     VERSION "1.0.0"

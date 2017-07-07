@@ -44,6 +44,7 @@ src/physical-design
 src/zlog-bench
 src/kvstore/bench
 src/tools/kvs-export
+src/bench/zlog-append-bench
 
 CMakeCache.txt
 CMakeFiles

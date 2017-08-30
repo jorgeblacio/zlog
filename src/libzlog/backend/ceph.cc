@@ -198,13 +198,11 @@ int CephBackend::MaxPos(const std::string& oid, uint64_t epoch,
 int CephBackend::Write(const std::string& oid, const Slice& data,
           uint64_t epoch, uint64_t position)
 {
-  // prepare operation
   ceph::bufferlist data_bl;
   data_bl.append(data.data(), data.size());
   librados::ObjectWriteOperation op;
   cls_zlog_client::write(op, position, data_bl);
 
-  // run operation
   int ret = ioctx_->operate(oid, &op);
   return zlog_rv(ret);
 }
@@ -212,15 +210,12 @@ int CephBackend::Write(const std::string& oid, const Slice& data,
 int CephBackend::Read(const std::string& oid, uint64_t epoch,
                       uint64_t position, std::string *data)
 {
-  // prepare operation
   librados::ObjectReadOperation op;
   cls_zlog_client::read(op, position);
 
-  // run operation
   ceph::bufferlist bl;
   int ret = ioctx_->operate(oid, &op, &bl);
 
-  // success: copy data out
   if (ret == cls_zlog_client::OK)
     data->assign(bl.c_str(), bl.length());
 
@@ -231,11 +226,9 @@ int CephBackend::Read(const std::string& oid, uint64_t epoch,
 int CephBackend::Trim(const std::string& oid, uint64_t epoch,
                       uint64_t position)
 {
-  // prepare operation
   librados::ObjectWriteOperation op;
   cls_zlog_client::invalidate(op, position, true);
 
-  // run operation
   int ret = ioctx_->operate(oid, &op);
   return zlog_rv(ret);
 }
@@ -243,11 +236,9 @@ int CephBackend::Trim(const std::string& oid, uint64_t epoch,
 int CephBackend::Fill(const std::string& oid, uint64_t epoch,
     uint64_t position)
 {
-  // prepare operation
   librados::ObjectWriteOperation op;
   cls_zlog_client::invalidate(op, position, false);
 
-  // run operation
   int ret = ioctx_->operate(oid, &op);
   return zlog_rv(ret);
 }

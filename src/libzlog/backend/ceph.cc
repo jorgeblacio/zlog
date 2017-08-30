@@ -41,7 +41,7 @@ int CephBackend::AioAppend(const std::string& oid, uint64_t epoch,
   data_bl.append(data.data(), data.size());
 
   librados::ObjectWriteOperation op;
-  zlog::cls_zlog_write(op, epoch, position, data_bl);
+  cls_zlog_client::write(op, position, data_bl);
 
   int ret = ioctx_->aio_operate(oid, c->c, &op);
   assert(ret == 0);
@@ -55,7 +55,7 @@ void CephBackend::aio_safe_cb_read(librados::completion_t cb, void *arg)
   librados::AioCompletion *rc = c->c;
   int ret = rc->get_return_value();
   rc->release();
-  if (ret == zlog::CLS_ZLOG_OK && c->bl.length() > 0)
+  if (ret == cls_zlog_client::OK && c->bl.length() > 0)
     c->data->assign(c->bl.c_str(), c->bl.length());
   c->cb(c->arg, zlog_rv(ret));
   delete c;
@@ -74,7 +74,7 @@ int CephBackend::AioRead(const std::string& oid, uint64_t epoch,
   assert(c->c);
 
   librados::ObjectReadOperation op;
-  zlog::cls_zlog_read(op, epoch, position);
+  cls_zlog_client::read(op, position);
 
   int ret = ioctx_->aio_operate(oid, c->c, &op, &c->bl);
   assert(ret == 0);
@@ -96,6 +96,8 @@ int CephBackend::Exists(const std::string& oid)
 int CephBackend::CreateHeadObject(const std::string& oid,
                      const zlog_proto::MetaLog& data)
 {
+  assert(0);
+
   // prepare blob
   ceph::bufferlist bl;
   pack_msg<zlog_proto::MetaLog>(bl, data);
@@ -103,7 +105,7 @@ int CephBackend::CreateHeadObject(const std::string& oid,
   // prepare operation
   librados::ObjectWriteOperation op;
   op.create(true); // exclusive create
-  zlog::cls_zlog_set_projection(op, 0, bl);
+  //cls_zlog_set_projection(op, 0, bl);
 
   // run operation
   int ret = ioctx_->operate(oid, &op);
@@ -113,13 +115,15 @@ int CephBackend::CreateHeadObject(const std::string& oid,
 int CephBackend::SetProjection(const std::string& oid, uint64_t epoch,
                   const zlog_proto::MetaLog& data)
 {
+  assert(0);
+
   // prepare blob
   ceph::bufferlist bl;
   pack_msg<zlog_proto::MetaLog>(bl, data);
 
   // prepare operation
   librados::ObjectWriteOperation op;
-  zlog::cls_zlog_set_projection(op, epoch, bl);
+  //zlog::cls_zlog_set_projection(op, epoch, bl);
 
   // run operation
   int ret = ioctx_->operate(oid, &op);
@@ -129,11 +133,13 @@ int CephBackend::SetProjection(const std::string& oid, uint64_t epoch,
 int CephBackend::LatestProjection(const std::string& oid,
                      uint64_t *epoch, zlog_proto::MetaLog& config)
 {
+  assert(0);
+
   // prepare operation
   int rv;
   ceph::bufferlist bl;
   librados::ObjectReadOperation op;
-  zlog::cls_zlog_get_latest_projection(op, &rv, epoch, &bl);
+  //zlog::cls_zlog_get_latest_projection(op, &rv, epoch, &bl);
 
   // run operation
   ceph::bufferlist unused;
@@ -158,8 +164,9 @@ int CephBackend::LatestProjection(const std::string& oid,
 
 int CephBackend::Seal(const std::string& oid, uint64_t epoch)
 {
+  assert(0);
   librados::ObjectWriteOperation op;
-  zlog::cls_zlog_seal(op, epoch);
+  //zlog::cls_zlog_seal(op, epoch);
   int ret = ioctx_->operate(oid, &op);
   return zlog_rv(ret);
 }
@@ -167,10 +174,12 @@ int CephBackend::Seal(const std::string& oid, uint64_t epoch)
 int CephBackend::MaxPos(const std::string& oid, uint64_t epoch,
            uint64_t *pos)
 {
+  assert(0);
+
   // prepare operation
   int rv;
   librados::ObjectReadOperation op;
-  zlog::cls_zlog_max_position(op, epoch, pos, &rv);
+  //zlog::cls_zlog_max_position(op, epoch, pos, &rv);
 
   // run operation
   ceph::bufferlist unused;
@@ -193,7 +202,7 @@ int CephBackend::Write(const std::string& oid, const Slice& data,
   ceph::bufferlist data_bl;
   data_bl.append(data.data(), data.size());
   librados::ObjectWriteOperation op;
-  zlog::cls_zlog_write(op, epoch, position, data_bl);
+  cls_zlog_client::write(op, position, data_bl);
 
   // run operation
   int ret = ioctx_->operate(oid, &op);
@@ -205,14 +214,14 @@ int CephBackend::Read(const std::string& oid, uint64_t epoch,
 {
   // prepare operation
   librados::ObjectReadOperation op;
-  zlog::cls_zlog_read(op, epoch, position);
+  cls_zlog_client::read(op, position);
 
   // run operation
   ceph::bufferlist bl;
   int ret = ioctx_->operate(oid, &op, &bl);
 
   // success: copy data out
-  if (ret == zlog::CLS_ZLOG_OK)
+  if (ret == cls_zlog_client::OK)
     data->assign(bl.c_str(), bl.length());
 
   return zlog_rv(ret);
@@ -224,7 +233,7 @@ int CephBackend::Trim(const std::string& oid, uint64_t epoch,
 {
   // prepare operation
   librados::ObjectWriteOperation op;
-  zlog::cls_zlog_trim(op, epoch, position);
+  cls_zlog_client::invalidate(op, position, true);
 
   // run operation
   int ret = ioctx_->operate(oid, &op);
@@ -236,7 +245,7 @@ int CephBackend::Fill(const std::string& oid, uint64_t epoch,
 {
   // prepare operation
   librados::ObjectWriteOperation op;
-  zlog::cls_zlog_fill(op, epoch, position);
+  cls_zlog_client::invalidate(op, position, false);
 
   // run operation
   int ret = ioctx_->operate(oid, &op);
@@ -249,23 +258,23 @@ int CephBackend::zlog_rv(int ret)
     return ret;
 
   switch (ret) {
-    case zlog::CLS_ZLOG_OK:
+    case cls_zlog_client::OK:
       return Backend::ZLOG_OK;
 
-    case zlog::CLS_ZLOG_STALE_EPOCH:
-      return Backend::ZLOG_STALE_EPOCH;
+    //case zlog::CLS_ZLOG_STALE_EPOCH:
+    //  return Backend::ZLOG_STALE_EPOCH;
 
-    case zlog::CLS_ZLOG_READ_ONLY:
+    case -EEXIST:
       return Backend::ZLOG_READ_ONLY;
 
-    case zlog::CLS_ZLOG_NOT_WRITTEN:
+    case cls_zlog_client::UNWRITTEN:
       return Backend::ZLOG_NOT_WRITTEN;
 
-    case zlog::CLS_ZLOG_INVALIDATED:
+    case cls_zlog_client::INVALID:
       return Backend::ZLOG_INVALIDATED;
 
-    case zlog::CLS_ZLOG_INVALID_EPOCH:
-      return Backend::ZLOG_INVALID_EPOCH;
+    //case zlog::CLS_ZLOG_INVALID_EPOCH:
+    //  return Backend::ZLOG_INVALID_EPOCH;
 
     default:
       assert(0);

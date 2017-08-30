@@ -37,7 +37,7 @@ void init(librados::ObjectWriteOperation& op, uint32_t entry_size,
   call.mutable_params()->set_entry_size(entry_size);
   call.mutable_params()->set_stripe_width(stripe_width);
   call.mutable_params()->set_entries_per_object(entries_per_object);
-  call.mutable_params()->set_object_id(object_id);
+  call.set_object_id(object_id);
   ceph::bufferlist in;
   cls_zlog::encode(in, call);
   op.exec("zlog", "init", in);

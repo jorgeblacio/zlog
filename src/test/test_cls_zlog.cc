@@ -193,7 +193,7 @@ TEST_F(ClsZlogTest, WriteInvalidMetadata) {
   omd.mutable_params()->set_entry_size(1);
   omd.mutable_params()->set_stripe_width(1);
   omd.mutable_params()->set_entries_per_object(1);
-  omd.mutable_params()->set_object_id(0);
+  omd.set_object_id(0);
 
   bufferlist bl;
   cls_zlog::encode(bl, omd);
@@ -412,7 +412,7 @@ TEST_F(ClsZlogTest, ReadInvalidMetadata) {
   omd.mutable_params()->set_entry_size(1);
   omd.mutable_params()->set_stripe_width(1);
   omd.mutable_params()->set_entries_per_object(1);
-  omd.mutable_params()->set_object_id(0);
+  omd.set_object_id(0);
 
   bufferlist bl;
   cls_zlog::encode(bl, omd);
@@ -588,7 +588,7 @@ TEST_F(ClsZlogTest, InvalidateInvalidMetadata) {
   omd.mutable_params()->set_entry_size(1);
   omd.mutable_params()->set_stripe_width(1);
   omd.mutable_params()->set_entries_per_object(1);
-  omd.mutable_params()->set_object_id(0);
+  omd.set_object_id(0);
 
   bufferlist bl;
   cls_zlog::encode(bl, omd);

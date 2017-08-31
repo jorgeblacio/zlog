@@ -76,6 +76,13 @@ static void worker(zlog::Log *log, size_t entry_size, bool dotrace)
       trace.emplace_back(start, end);
     }
     count++;
+
+    // temp
+    std::string val;
+    ret = log->Read(position, &val);
+    checkret(ret, 0);
+
+    assert(memcmp(val.c_str(), rand_buf_raw + buf_offset, entry_size) == 0);
   }
 }
 

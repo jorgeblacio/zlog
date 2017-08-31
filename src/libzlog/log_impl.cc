@@ -677,14 +677,18 @@ int LogImpl::Read(uint64_t epoch, uint64_t position, std::string *data)
 int LogImpl::Read(uint64_t position, std::string *data)
 {
   for (;;) {
-    uint64_t epoch;
+    uint64_t epoch = 0; // TODO: unused
     std::string oid;
-    mapper_.FindObject(position, &oid, &epoch);
+    striper_.MapPosition(position, oid);
 
     int ret = new_backend->Read(oid, epoch, position, data);
     if (ret < 0) {
-      std::cerr << "read failed ret " << ret << std::endl;
-      return ret;
+      if (ret == -ENOENT) {
+        ret = Backend::ZLOG_NOT_WRITTEN;
+      } else {
+        std::cerr << "read failed ret " << ret << std::endl;
+        return ret;
+      }
     }
 
     if (ret == Backend::ZLOG_OK)

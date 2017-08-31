@@ -67,6 +67,7 @@ int Log::CreateWithStripeWidth(Backend *backend, const std::string& name,
   impl->metalog_oid_ = metalog_oid;
   impl->seqr = seqr;
   impl->mapper_.SetName(name);
+  impl->striper_.SetName(name);
 
   ret = impl->RefreshProjection();
   if (ret) {
@@ -112,6 +113,7 @@ int Log::Open(Backend *backend, const std::string& name,
   impl->metalog_oid_ = metalog_oid;
   impl->seqr = seqr;
   impl->mapper_.SetName(name);
+  impl->striper_.SetName(name);
 
   ret = impl->RefreshProjection();
   if (ret) {
@@ -403,25 +405,14 @@ int LogImpl::Seal(const std::vector<std::string>& objects,
 int LogImpl::RefreshProjection()
 {
   for (;;) {
-    uint64_t epoch;
-    zlog_proto::MetaLog config;
-    int ret = new_backend->LatestProjection(metalog_oid_, &epoch, config);
+    std::list<Backend::View> views;
+    int ret = new_backend->ReadViews(metalog_oid_, 0, views);
     if (ret != Backend::ZLOG_OK) {
       std::cerr << "failed to get projection ret " << ret << std::endl;
       sleep(1);
       continue;
     }
-
-    StripeHistory hist;
-    ret = hist.Deserialize(config);
-    if (ret) {
-      std::cerr << "RefreshProjection: failed to decode..." << std::endl << std::flush;
-      return ret;
-    }
-    assert(!hist.Empty());
-
-    mapper_.SetHistory(hist, epoch);
-
+    striper_.AddViews(views);
     break;
   }
 
@@ -529,14 +520,26 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
     if (ret)
       return ret;
 
-    uint64_t epoch;
+    uint64_t epoch = 0; // TODO: unused
     std::string oid;
-    mapper_.FindObject(position, &oid, &epoch);
+    striper_.MapPosition(position, oid);
 
+    // TODO: we should be sending IOs through a layer that takes care of
+    // object initialization for us...
     ret = new_backend->Write(oid, data, epoch, position);
-    if (ret < 0 && ret != -EFBIG) {
-      std::cerr << "append: failed ret " << ret << std::endl;
-      return ret;
+    if (ret < 0) {
+      if (ret == -ENOENT) {
+        ret = striper_.InitDataObject(position, new_backend);
+        if (ret) {
+          std::cerr << "append: failed to init ret " << ret << std::endl;
+          return ret;
+        }
+        ret = new_backend->Write(oid, data, epoch, position);
+      }
+      if (ret < 0) {
+        std::cerr << "append: failed ret " << ret << std::endl;
+        return ret;
+      }
     }
 
     if (ret == Backend::ZLOG_OK) {
@@ -552,23 +555,6 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
         return ret;
       continue;
     }
-
-#ifdef BACKEND_SUPPORT_DISABLED
-    /*
-     * When an object becomes too large we seal the entire stripe and create a
-     * new stripe of empty objects. First we refresh the projection and try
-     * the append again if the projection changed. Otherwise we will attempt
-     * to create the new stripe.
-     */
-    if (ret == -EFBIG) {
-      assert(backend_ver == 2);
-      CreateNewStripe(epoch);
-      ret = RefreshProjection();
-      if (ret)
-        return ret;
-      continue;
-    }
-#endif
 
     assert(ret == Backend::ZLOG_READ_ONLY);
   }

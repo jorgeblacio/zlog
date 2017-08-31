@@ -87,6 +87,19 @@ class RAMBackend : public Backend {
     return ZLOG_OK;
   }
 
+  int ReadViews(const std::string& oid, uint64_t min_epoch,
+      std::list<View>& views) {
+    assert(0);
+    return 0;
+  }
+
+  virtual int InitDataObject(const std::string& oid, uint32_t entry_size,
+      uint32_t stripe_width, uint32_t entries_per_object,
+      uint64_t object_id) {
+    assert(0);
+    return 0;
+  }
+
   virtual int MaxPos(const std::string& oid, uint64_t epoch,
       uint64_t *pos) {
     std::lock_guard<std::mutex> l(lock_);

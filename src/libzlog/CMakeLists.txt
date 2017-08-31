@@ -6,7 +6,8 @@ set(libzlog_sources
   stripe_history.cc
   log_mapper.cc
   aio.cc
-  backend/lmdb.cc)
+  backend/lmdb.cc
+  striper.cc)
 
 if(BUILD_CEPH_BACKEND)
   list(APPEND libzlog_sources capi.cc)

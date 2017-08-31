@@ -1,5 +1,6 @@
 #include "zlog/backend/ceph.h"
 #include "cls_zlog_client.h"
+#include "libzlog/backend/ceph.pb.h"
 
 CephBackend::CephBackend(librados::IoCtx *ioctx) :
   ioctx_(ioctx)
@@ -96,18 +97,13 @@ int CephBackend::Exists(const std::string& oid)
 int CephBackend::CreateHeadObject(const std::string& oid,
                      const zlog_proto::MetaLog& data)
 {
-  assert(0);
-
-  // prepare blob
   ceph::bufferlist bl;
   pack_msg<zlog_proto::MetaLog>(bl, data);
 
-  // prepare operation
+  // TODO: factor our defaults
   librados::ObjectWriteOperation op;
-  op.create(true); // exclusive create
-  //cls_zlog_set_projection(op, 0, bl);
+  cls_zlog_client::view_init(op, 1024, 10, 10, 10);
 
-  // run operation
   int ret = ioctx_->operate(oid, &op);
   return zlog_rv(ret);
 }
@@ -128,6 +124,46 @@ int CephBackend::SetProjection(const std::string& oid, uint64_t epoch,
   // run operation
   int ret = ioctx_->operate(oid, &op);
   return zlog_rv(ret);
+}
+
+int CephBackend::ReadViews(const std::string& oid, uint64_t min_epoch,
+    std::list<View>& views)
+{
+  librados::ObjectReadOperation op;
+  cls_zlog_client::view_read(op, min_epoch);
+
+  ceph::bufferlist bl;
+  int ret = ioctx_->operate(oid, &op, &bl);
+  if (ret) {
+    std::cerr << "ReadViews: ret " << ret << std::endl;
+    return ret;
+  }
+
+  zlog_ceph_proto::ViewReadOpReply reply;
+  if (!unpack_msg<zlog_ceph_proto::ViewReadOpReply>(reply, bl)) {
+    std::cerr << "failed to parse views" << std::endl;
+    return -EIO;
+  }
+
+  if (reply.views_size() == 0)
+    return -EINVAL;
+
+  views.clear();
+
+  for (int i = 0; i < reply.views_size(); i++) {
+    auto rv = reply.views(i);
+
+    Backend::View v;
+    v.epoch = rv.epoch();
+    v.entry_size = rv.params().entry_size();
+    v.stripe_width = rv.params().stripe_width();
+    v.entries_per_object = rv.params().entries_per_object();
+    v.num_stripes = rv.num_stripes();
+
+    views.push_back(v);
+  }
+
+  return 0;
 }
 
 int CephBackend::LatestProjection(const std::string& oid,
@@ -160,6 +196,16 @@ int CephBackend::LatestProjection(const std::string& oid,
   }
 
   return zlog_rv(0);
+}
+
+int CephBackend::InitDataObject(const std::string& oid, uint32_t entry_size,
+      uint32_t stripe_width, uint32_t entries_per_object, uint64_t object_id)
+{
+  librados::ObjectWriteOperation op;
+  cls_zlog_client::init(op, entry_size, stripe_width,
+      entries_per_object, object_id);
+  int ret = ioctx_->operate(oid, &op);
+  return zlog_rv(ret);
 }
 
 int CephBackend::Seal(const std::string& oid, uint64_t epoch)

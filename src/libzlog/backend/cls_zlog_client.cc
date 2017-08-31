@@ -74,4 +74,26 @@ void invalidate(librados::ObjectWriteOperation& op, uint64_t position,
   op.exec("zlog", "invalidate", in);
 }
 
+void view_init(librados::ObjectWriteOperation& op, uint32_t entry_size,
+    uint32_t stripe_width, uint32_t entries_per_object, uint32_t num_stripes)
+{
+  zlog_ceph_proto::ViewInitOp call;
+  call.mutable_params()->set_entry_size(entry_size);
+  call.mutable_params()->set_stripe_width(stripe_width);
+  call.mutable_params()->set_entries_per_object(entries_per_object);
+  call.set_num_stripes(num_stripes);
+  ceph::bufferlist in;
+  cls_zlog::encode(in, call);
+  op.exec("zlog", "view_init", in);
+}
+
+void view_read(librados::ObjectReadOperation& op, uint64_t min_epoch)
+{
+  zlog_ceph_proto::ViewReadOp call;
+  call.set_min_epoch(min_epoch);
+  ceph::bufferlist in;
+  cls_zlog::encode(in, call);
+  op.exec("zlog", "view_read", in);
+}
+
 }

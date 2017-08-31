@@ -36,6 +36,13 @@ class CephBackend : public Backend {
   virtual int LatestProjection(const std::string& oid,
       uint64_t *epoch, zlog_proto::MetaLog& config);
 
+  virtual int ReadViews(const std::string& oid, uint64_t min_epoch,
+      std::list<View>& views);
+
+  virtual int InitDataObject(const std::string& oid, uint32_t entry_size,
+      uint32_t stripe_width, uint32_t entries_per_object,
+      uint64_t object_id);
+
   virtual int Seal(const std::string& oid, uint64_t epoch);
 
   virtual int MaxPos(const std::string& oid, uint64_t epoch,

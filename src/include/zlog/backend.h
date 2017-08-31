@@ -1,8 +1,9 @@
-#ifndef ZLOG_INCLUDE_ZLOG_BACKEND_H
-#define ZLOG_INCLUDE_ZLOG_BACKEND_H
+#pragma once
+
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <list>
 
 #include "zlog/slice.h"
 #include "proto/zlog.pb.h"
@@ -17,6 +18,15 @@ class Backend {
     ZLOG_NOT_WRITTEN,
     ZLOG_INVALIDATED,
     ZLOG_INVALID_EPOCH,
+  };
+
+  // TODO: add sanity checking accessors
+  struct View {
+    uint64_t epoch;
+    uint32_t entry_size;
+    uint32_t stripe_width;
+    uint32_t entries_per_object;
+    uint32_t num_stripes;
   };
 
   virtual ~Backend() {}
@@ -48,8 +58,21 @@ class Backend {
   /*
    *
    */
+  virtual int ReadViews(const std::string& oid, uint64_t min_epoch,
+      std::list<View>& views) = 0;
+
+  /*
+   *
+   */
   virtual int LatestProjection(const std::string& oid,
       uint64_t *epoch, zlog_proto::MetaLog& data) = 0;
+
+  /*
+   *
+   */
+  virtual int InitDataObject(const std::string& oid, uint32_t entry_size,
+      uint32_t stripe_width, uint32_t entries_per_object,
+      uint64_t object_id) = 0;
 
   /*
    *
@@ -100,5 +123,3 @@ class Backend {
       uint64_t position, std::string *data, void *arg,
       std::function<void(void*, int)> callback) = 0;
 };
-
-#endif

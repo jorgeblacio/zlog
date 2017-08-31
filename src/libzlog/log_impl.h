@@ -5,6 +5,7 @@
 #include "include/zlog/log.h"
 #include "libseq/libseqr.h"
 #include "log_mapper.h"
+#include "striper.h"
 #include "include/zlog/backend.h"
 
 namespace zlog {
@@ -142,6 +143,7 @@ class LogImpl : public Log {
 #endif
 
   LogMapper mapper_;
+  Striper striper_;
 
   std::condition_variable new_stripe_cond_;
   std::mutex lock_;

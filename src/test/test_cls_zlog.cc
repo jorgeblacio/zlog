@@ -33,6 +33,20 @@ static inline bool decode(ceph::bufferlist& bl, google::protobuf::Message *msg)
 
 using namespace librados;
 
+static inline bool safe_decode(ceph::bufferlist& bl, google::protobuf::Message *msg)
+{
+  if (bl.length() == 0) {
+    return false;
+  }
+  if (!msg->ParseFromString(bl.to_str())) {
+    return false;
+  }
+  if (!msg->IsInitialized()) {
+    return false;
+  }
+  return true;
+}
+
 class ClsZlogTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
@@ -90,6 +104,40 @@ static int do_invalidate(librados::IoCtx& ioctx,
 {
   auto op = new_wop();
   cls_zlog_client::invalidate(*op, pos, force);
+  return ioctx.operate(oid, op.get());
+}
+
+static int do_view_init(librados::IoCtx& ioctx,
+    uint32_t entry_size, uint32_t stripe_width,
+    uint32_t entries_per_object, uint32_t num_stripes,
+    std::string oid = "obj")
+{
+  auto op = new_wop();
+  cls_zlog_client::view_init(*op, entry_size, stripe_width,
+      entries_per_object, num_stripes);
+  return ioctx.operate(oid, op.get());
+}
+
+static int do_view_read(librados::IoCtx& ioctx,
+    uint64_t min_epoch,
+    zlog_ceph_proto::ViewReadOpReply &r,
+    std::string oid = "obj")
+{
+  auto op = new_rop();
+  ceph::bufferlist bl;
+  cls_zlog_client::view_read(*op, min_epoch);
+  int ret = ioctx.operate(oid, op.get(), &bl);
+  if (ret)
+    return ret;
+  assert(safe_decode(bl, &r));
+  return 0;
+}
+
+static int do_view_extend(librados::IoCtx& ioctx,
+    uint64_t position, std::string oid = "obj")
+{
+  auto op = new_wop();
+  cls_zlog_client::view_extend(*op, position);
   return ioctx.operate(oid, op.get());
 }
 
@@ -976,4 +1024,208 @@ TEST_F(ClsZlogTest, InvalidateForceInvalid) {
   // read at 5; still invalid
   ret = do_read(ioctx, 5, bl);
   ASSERT_EQ(ret, zlog_ceph_proto::ReadOp::INVALID);
+}
+
+TEST_F(ClsZlogTest, ViewInitInvalidOp) {
+  bufferlist inbl, outbl;
+  inbl.append("foo", strlen("foo"));
+  int ret = ioctx.exec("obj", "zlog", "view_init", inbl, outbl);
+  ASSERT_EQ(ret, -EINVAL);
+}
+
+TEST_F(ClsZlogTest, ViewInitExists) {
+  int ret = do_view_init(ioctx, 1, 1, 1, 1);
+  ASSERT_EQ(ret, 0);
+
+  ret = ioctx.create("obj2", true);
+  ASSERT_EQ(ret, 0);
+
+  ret = do_view_init(ioctx, 1, 1, 1, 1, "obj2");
+  ASSERT_EQ(ret, -EEXIST);
+}
+
+TEST_F(ClsZlogTest, ViewInitInvalidParams) {
+  int ret = do_view_init(ioctx, 0, 0, 0, 0);
+  ASSERT_EQ(ret, -EINVAL);
+
+  ret = do_view_init(ioctx, 1, 0, 0, 0);
+  ASSERT_EQ(ret, -EINVAL);
+
+  ret = do_view_init(ioctx, 1, 1, 0, 0);
+  ASSERT_EQ(ret, -EINVAL);
+
+  ret = do_view_init(ioctx, 1, 1, 1, 0);
+  ASSERT_EQ(ret, -EINVAL);
+
+  ret = do_view_init(ioctx, 1, 1, 1, 1);
+  ASSERT_EQ(ret, 0);
+}
+
+TEST_F(ClsZlogTest, ViewReadInvalidOp) {
+  // needed, otherwise exec below will return enoent.
+  int ret = ioctx.create("obj", true);
+  ASSERT_EQ(ret, 0);
+
+  bufferlist inbl, outbl;
+  inbl.append("foo", strlen("foo"));
+  ret = ioctx.exec("obj", "zlog", "view_read", inbl, outbl);
+  ASSERT_EQ(ret, -EINVAL);
+}
+
+TEST_F(ClsZlogTest, ViewReadNotExists) {
+  zlog_ceph_proto::ViewReadOpReply r;
+  int ret = do_view_read(ioctx, 0, r);
+  ASSERT_EQ(ret, -ENOENT);
+}
+
+TEST_F(ClsZlogTest, ViewReadMinEpochNotExists) {
+  // create without init method...
+  int ret = ioctx.create("obj2", true);
+  ASSERT_EQ(ret, 0);
+
+  // the min epoch should not exist
+  zlog_ceph_proto::ViewReadOpReply r;
+  ret = do_view_read(ioctx, 0, r, "obj2");
+  ASSERT_EQ(ret, -EIO);
+}
+
+TEST_F(ClsZlogTest, ViewReadEpochZeroAfterInit) {
+  int ret = do_view_init(ioctx, 1, 2, 3, 4);
+  ASSERT_EQ(ret, 0);
+
+  zlog_ceph_proto::ViewReadOpReply r;
+  ret = do_view_read(ioctx, 0, r);
+  ASSERT_EQ(ret, 0);
+
+  ASSERT_EQ(r.views_size(), 1);
+  ASSERT_EQ(r.views(0).params().entry_size(),  (unsigned)1);
+  ASSERT_EQ(r.views(0).params().stripe_width(), (unsigned)2);
+  ASSERT_EQ(r.views(0).params().entries_per_object(), (unsigned)3);
+  ASSERT_EQ(r.views(0).num_stripes(), (unsigned)4);
+  ASSERT_EQ(r.views(0).epoch(), (unsigned)0);
+}
+
+TEST_F(ClsZlogTest, ViewReadPastEpoch) {
+  int ret = do_view_init(ioctx, 1, 2, 3, 4);
+  ASSERT_EQ(ret, 0);
+
+  zlog_ceph_proto::ViewReadOpReply r;
+  ret = do_view_read(ioctx, 1, r);
+  ASSERT_EQ(ret, -EINVAL);
+}
+
+TEST_F(ClsZlogTest, ViewExtendInvalidOp) {
+  bufferlist inbl, outbl;
+  inbl.append("foo", strlen("foo"));
+  int ret = ioctx.exec("obj", "zlog", "view_extend", inbl, outbl);
+  ASSERT_EQ(ret, -EINVAL);
+}
+
+TEST_F(ClsZlogTest, ViewExtendNotExists) {
+  int ret = do_view_extend(ioctx, 0);
+  ASSERT_EQ(ret, -ENOENT);
+}
+
+TEST_F(ClsZlogTest, ViewExtendMinEpochNotExists) {
+  // create without init method...
+  int ret = ioctx.create("obj2", true);
+  ASSERT_EQ(ret, 0);
+
+  // the min epoch should not exist
+  ret = do_view_extend(ioctx, 0, "obj2");
+  ASSERT_EQ(ret, -EIO);
+}
+
+TEST_F(ClsZlogTest, ViewExtendCoveredAfterInit) {
+  int ret = do_view_init(ioctx, 1, 10, 10, 5);
+  ASSERT_EQ(ret, 0);
+
+  ret = do_view_extend(ioctx, 0);
+  ASSERT_EQ(ret, 0);
+
+  ret = do_view_extend(ioctx, 23);
+  ASSERT_EQ(ret, 0);
+
+  ret = do_view_extend(ioctx, 499);
+  ASSERT_EQ(ret, 0);
+
+  zlog_ceph_proto::ViewReadOpReply r;
+  ret = do_view_read(ioctx, 0, r);
+  ASSERT_EQ(ret, 0);
+
+  ASSERT_EQ(r.views_size(), 1);
+  ASSERT_EQ(r.views(0).epoch(), (unsigned)0);
+}
+
+TEST_F(ClsZlogTest, ViewExtendCovered) {
+  int ret = do_view_init(ioctx, 1, 10, 10, 5);
+  ASSERT_EQ(ret, 0);
+
+  ret = do_view_extend(ioctx, 0);
+  ASSERT_EQ(ret, 0);
+
+  ret = do_view_extend(ioctx, 23);
+  ASSERT_EQ(ret, 0);
+
+  ret = do_view_extend(ioctx, 499);
+  ASSERT_EQ(ret, 0);
+
+  zlog_ceph_proto::ViewReadOpReply r;
+  ret = do_view_read(ioctx, 0, r);
+  ASSERT_EQ(ret, 0);
+  ASSERT_EQ(r.views_size(), 1);
+  ASSERT_EQ(r.views(0).epoch(), (unsigned)0);
+
+  // new stripe to cover 500-599
+  ret = do_view_extend(ioctx, 500);
+  ASSERT_EQ(ret, 0);
+
+  // already covered
+  ret = do_view_extend(ioctx, 333);
+  ASSERT_EQ(ret, 0);
+
+  // new stripe to cover 600-699
+  ret = do_view_extend(ioctx, 643);
+  ASSERT_EQ(ret, 0);
+
+  r.Clear();
+  ret = do_view_read(ioctx, 0, r);
+  ASSERT_EQ(ret, 0);
+  ASSERT_EQ(r.views_size(), 3);
+  ASSERT_EQ(r.views(0).epoch(), (unsigned)0);
+  ASSERT_EQ(r.views(1).epoch(), (unsigned)1);
+  ASSERT_EQ(r.views(2).epoch(), (unsigned)2);
+  ASSERT_EQ(r.views(0).num_stripes(), (unsigned)5);
+  ASSERT_EQ(r.views(1).num_stripes(), (unsigned)1);
+  ASSERT_EQ(r.views(2).num_stripes(), (unsigned)1);
+
+  ret = do_view_extend(ioctx, 10000);
+  ASSERT_EQ(ret, 0);
+
+  r.Clear();
+  ret = do_view_read(ioctx, 0, r);
+  ASSERT_EQ(ret, 0);
+  ASSERT_EQ(r.views_size(), 4);
+  ASSERT_EQ(r.views(0).epoch(), (unsigned)0);
+  ASSERT_EQ(r.views(1).epoch(), (unsigned)1);
+  ASSERT_EQ(r.views(2).epoch(), (unsigned)2);
+  ASSERT_EQ(r.views(3).epoch(), (unsigned)3);
+
+  // 0--499 (5 stripes)
+  ASSERT_EQ(r.views(0).num_stripes(), (unsigned)5);
+  // 500-599 (1 stripe)
+  ASSERT_EQ(r.views(1).num_stripes(), (unsigned)1);
+  // 600-699 (1 stripe)
+  ASSERT_EQ(r.views(2).num_stripes(), (unsigned)1);
+  // 700--999 (3s) + 1000--9999 (90s) + 10000-10099 (1s)
+  ASSERT_EQ(r.views(3).num_stripes(), (unsigned)94);
+
+  r.Clear();
+  ret = do_view_read(ioctx, 2, r);
+  ASSERT_EQ(ret, 0);
+  ASSERT_EQ(r.views_size(), 2);
+  ASSERT_EQ(r.views(0).epoch(), (unsigned)2);
+  ASSERT_EQ(r.views(1).epoch(), (unsigned)3);
+  ASSERT_EQ(r.views(0).num_stripes(), (unsigned)1);
+  ASSERT_EQ(r.views(1).num_stripes(), (unsigned)94);
 }

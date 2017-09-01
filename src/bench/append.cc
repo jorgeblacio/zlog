@@ -41,7 +41,7 @@ static void sigint_handler(int sig)
   stop = true;
 }
 
-static int count = 0;
+static uint64_t count = 0;
 static std::vector<std::pair<uint64_t,uint64_t>> trace;
 
 static void worker(zlog::Log *log, size_t entry_size, bool dotrace)
@@ -69,28 +69,35 @@ static void worker(zlog::Log *log, size_t entry_size, bool dotrace)
     size_t buf_offset = rand_dist(gen);
     uint64_t start = __getns(CLOCK_REALTIME); // may need to compare across machines
     int ret = log->Append(Slice(rand_buf_raw + buf_offset, entry_size), &position);
-    std::cout << position << std::endl;
     uint64_t end = __getns(CLOCK_REALTIME);
     checkret(ret, 0);
     if (dotrace) {
       trace.emplace_back(start, end);
     }
     count++;
-
     // temp
-    std::string val;
-    ret = log->Read(position, &val);
-    checkret(ret, 0);
+    //std::string val;
+    //ret = log->Read(position, &val);
+    //checkret(ret, 0);
 
-    assert(memcmp(val.c_str(), rand_buf_raw + buf_offset, entry_size) == 0);
+    //assert(memcmp(val.c_str(), rand_buf_raw + buf_offset, entry_size) == 0);
   }
 }
 
 static void monitor()
 {
   while (!stop) {
-    std::cerr << "progress: " << count << std::endl;
+    auto startns = getns();
+    auto startcount = count;
     sleep(5);
+    auto endns = getns();
+    auto endcount = count;
+
+    auto durns = endns - startns;
+    auto totalcount = endcount - startcount;
+    auto iops = ((double)totalcount * (double)1000000000.0) / (double)durns;
+
+    std::cerr << "progress: " << count << " iops: " << iops << std::endl;
   }
 }
 

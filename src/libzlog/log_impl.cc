@@ -522,7 +522,18 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
 
     uint64_t epoch = 0; // TODO: unused
     std::string oid;
-    striper_.MapPosition(position, oid);
+    ret = striper_.MapPosition(position, oid);
+    if (ret == -EFAULT) {
+      std::cout << "extending view" << std::endl;
+      ret = new_backend->ExtendViews(metalog_oid_, position);
+      if (ret)
+        return ret;
+      ret = RefreshProjection();
+      if (ret)
+        return ret;
+      sleep(1);
+      continue;
+    }
 
     // TODO: we should be sending IOs through a layer that takes care of
     // object initialization for us...

@@ -5,7 +5,7 @@
 class Striper {
  public:
   void AddViews(const std::list<Backend::View>& views);
-  void MapPosition(uint64_t position, std::string& oid);
+  int MapPosition(uint64_t position, std::string& oid);
   void SetName(const std::string& log_name) {
     log_name_ = log_name;
   }

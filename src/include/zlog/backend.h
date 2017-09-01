@@ -61,6 +61,10 @@ class Backend {
   virtual int ReadViews(const std::string& oid, uint64_t min_epoch,
       std::list<View>& views) = 0;
 
+  // Ensure that a view exists that maps the specified position. The most
+  // recent configuration is used to extend the registered mappings.
+  virtual int ExtendViews(const std::string& oid, uint64_t position) = 0;
+
   /*
    *
    */

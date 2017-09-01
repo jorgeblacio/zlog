@@ -52,6 +52,11 @@ class LMDBBackend : public Backend {
     return 0;
   }
 
+  virtual int ExtendViews(const std::string& oid, uint64_t position) {
+    assert(0);
+    return 0;
+  }
+
   virtual int MaxPos(const std::string& oid, uint64_t epoch,
       uint64_t *pos);
 

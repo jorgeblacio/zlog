@@ -1,6 +1,6 @@
 #include "zlog/backend/ceph.h"
 #include "cls_zlog_client.h"
-#include "libzlog/backend/ceph.pb.h"
+#include "libzlog/storage/ceph/ceph.pb.h"
 
 CephBackend::CephBackend(librados::IoCtx *ioctx) :
   ioctx_(ioctx)

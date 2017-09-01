@@ -1,9 +1,9 @@
 #include <random>
 #include <algorithm>
 #include "gtest/gtest.h"
-#include "libzlog/backend/cls_zlog_client.h"
+#include "libzlog/storage/ceph/cls_zlog_client.h"
 #include "test/ceph_test_helper.h"
-#include "libzlog/backend/ceph.pb.h"
+#include "libzlog/storage/ceph/ceph.pb.h"
 
 namespace cls_zlog {
 

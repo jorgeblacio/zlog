@@ -1,5 +1,5 @@
 #include "cls_zlog_client.h"
-#include "libzlog/backend/ceph.pb.h"
+#include "libzlog/storage/ceph/ceph.pb.h"
 
 namespace cls_zlog {
 

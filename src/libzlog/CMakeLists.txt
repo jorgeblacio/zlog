@@ -1,4 +1,4 @@
-add_subdirectory(backend)
+add_subdirectory(storage)
 
 set(libzlog_sources
   log_impl.cc
@@ -6,7 +6,7 @@ set(libzlog_sources
   stripe_history.cc
   log_mapper.cc
   aio.cc
-  backend/lmdb.cc
+  storage/lmdb.cc
   striper.cc)
 
 if(BUILD_CEPH_BACKEND)

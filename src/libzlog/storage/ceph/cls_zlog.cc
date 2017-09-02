@@ -673,6 +673,14 @@ static int view_extend(cls_method_context_t hctx, ceph::bufferlist *in,
   return 0;
 }
 
+#ifndef CEPH_CLS_API
+#if __GNUC__ >= 4
+  #define CEPH_CLS_API    __attribute__ ((visibility ("default")))
+#else
+  #define CEPH_CLS_API
+#endif
+#endif
+
 CLS_INIT(zlog)
 {
   CLS_LOG(0, "loading cls_zlog");

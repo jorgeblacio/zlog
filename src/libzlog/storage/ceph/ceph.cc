@@ -102,7 +102,7 @@ int CephBackend::CreateHeadObject(const std::string& oid,
 
   // TODO: factor our defaults
   librados::ObjectWriteOperation op;
-  cls_zlog_client::view_init(op, 1024, 20, 8192, 10);
+  cls_zlog_client::view_init(op, 1024, 10, 10, 2);
 
   int ret = ioctx_->operate(oid, &op);
   return zlog_rv(ret);

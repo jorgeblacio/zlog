@@ -69,18 +69,20 @@ static void worker(zlog::Log *log, size_t entry_size, bool dotrace)
     size_t buf_offset = rand_dist(gen);
     uint64_t start = __getns(CLOCK_REALTIME); // may need to compare across machines
     int ret = log->Append(Slice(rand_buf_raw + buf_offset, entry_size), &position);
+    std::cout << position << std::endl;
     uint64_t end = __getns(CLOCK_REALTIME);
     checkret(ret, 0);
     if (dotrace) {
       trace.emplace_back(start, end);
     }
     count++;
-    // temp
-    //std::string val;
-    //ret = log->Read(position, &val);
-    //checkret(ret, 0);
 
-    //assert(memcmp(val.c_str(), rand_buf_raw + buf_offset, entry_size) == 0);
+    // temp
+    std::string val;
+    ret = log->Read(position, &val);
+    checkret(ret, 0);
+
+    assert(memcmp(val.c_str(), rand_buf_raw + buf_offset, entry_size) == 0);
   }
 }
 

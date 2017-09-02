@@ -12,10 +12,9 @@ namespace zlog {
 
 class LogImpl : public Log {
  public:
-  LogImpl() {}
-#if BACKEND_SUPPORT_DISABLED
-  LogImpl() : backend(NULL), backend_ver(2), new_stripe_pending_(false) {}
-#endif
+  LogImpl() :
+    striper_(this)
+  {}
 
   /*
    * Create cut.
@@ -144,6 +143,10 @@ class LogImpl : public Log {
 
   LogMapper mapper_;
   Striper striper_;
+
+  int ExtendViews(uint64_t position) {
+    return new_backend->ExtendViews(metalog_oid_, position);
+  }
 
   std::condition_variable new_stripe_cond_;
   std::mutex lock_;

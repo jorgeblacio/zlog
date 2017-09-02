@@ -2,98 +2,120 @@
 #include "include/zlog/backend.h"
 #include <sstream>
 #include <iostream>
+#include "log_impl.h"
+
+namespace zlog {
 
 void Striper::AddViews(const std::list<Backend::View>& views)
 {
-  std::map<uint64_t, Backend::View> ordered_views;
-  for (auto v : views) {
-    auto ret = ordered_views.emplace(v.epoch, v);
+  std::map<uint64_t, Backend::View> view_map;
+  for (auto view : views) {
+    auto ret = view_map.emplace(view.epoch, view);
     assert(ret.second);
   }
 
-  std::lock_guard<std::mutex> l(lock_);
-
-  if (stripes_.empty()) {
-    auto it = ordered_views.find(0);
-    assert(it != ordered_views.end());
-    Stripe s;
-    s.view = it->second;
-    s.max_pos = s.view.entries_per_object *
-      s.view.stripe_width * s.view.num_stripes - 1;
-    stripes_.emplace(0, s);
+  // always initialize with epoch 0
+  if (objsets_.empty()) {
+    auto view = view_map.at(0);
+    Layout layout(view.entry_size, view.stripe_width,
+        view.entries_per_object);
+    ObjectSet objset(layout, view.num_stripes, 0);
+    objsets_.emplace(0, objset);
     epoch_ = 0;
   }
 
-  while (true) {
-    auto latest_stripe = stripes_.at(epoch_);
+  // latest known object set
+  auto latest_it = objsets_.end();
+  latest_it--;
 
-    const uint64_t next_epoch = epoch_ + 1;
-    auto it = ordered_views.find(next_epoch);
-    if (it == ordered_views.end()) {
+  // incorporate view state in epoch order
+  uint64_t next_epoch = epoch_ + 1;
+  for (auto it = view_map.find(next_epoch); it != view_map.end(); it++) {
+    if (it->first != next_epoch)
       break;
-    }
 
-    Stripe new_stripe;
-    new_stripe.view = it->second;
-    assert(new_stripe.view.epoch = next_epoch);
-    new_stripe.max_pos = latest_stripe.max_pos +
-      new_stripe.view.entries_per_object *
-      new_stripe.view.stripe_width *
-      new_stripe.view.num_stripes;
-    auto res = stripes_.emplace(next_epoch, new_stripe);
+    auto view = it->second;
+
+    Layout layout(view.entry_size, view.stripe_width,
+        view.entries_per_object);
+
+    const uint64_t minpos = latest_it->second.maxpos() + 1;
+    ObjectSet objset(layout, view.num_stripes, minpos);
+
+    auto res = objsets_.emplace(minpos, objset);
     assert(res.second);
+    latest_it = res.first;
+
     epoch_ = next_epoch;
+    next_epoch++;
   }
 }
 
-// Computes the object-id that stores the given log position based on the
-// current set of known views. On success, zero will be returned. If a log
-// position does not map into any known view, then -EFAULT is returned.
-int Striper::MapPosition(uint64_t position, std::string& oid)
+std::map<uint64_t, ObjectSet>::iterator Striper::MapToObjectSet(uint64_t position)
 {
-  assert(!stripes_.empty());
+  assert(!objsets_.empty());
 
-  auto it = stripes_.upper_bound(position);
-  assert(it != stripes_.begin());
+  auto it = objsets_.upper_bound(position);
+  assert(it != objsets_.begin());
   it--;
 
-  if (position > it->second.max_pos)
-    return -EFAULT;
+  if (position > it->second.maxpos())
+    return objsets_.end();
 
-  auto view = it->second.view;
+  return it;
+}
 
-  // logical layout
-  const uint64_t stripe_num = position / view.stripe_width;
-  const uint64_t stripepos = position % view.stripe_width;
-  const uint64_t objectsetno = stripe_num / view.entries_per_object;
-  const uint64_t objectno = objectsetno * view.stripe_width + stripepos;
-
+std::string Striper::ObjectName(uint64_t objectno)
+{
   std::stringstream ss;
   ss << log_name_ << "." << objectno;
-  oid = ss.str();
+  return ss.str();
+}
 
+std::string Striper::ObjectName(const ObjectSet& os, uint64_t position)
+{
+  uint64_t objectno = os.objectno(position);
+  return ObjectName(objectno);
+}
+
+int Striper::MapPosition(uint64_t position, std::string& oid, bool extend)
+{
+  auto it = MapToObjectSet(position);
+  if (it == objsets_.end()) {
+    if (!extend)
+      return -EFAULT;
+
+    int ret = log_->ExtendViews(position);
+    if (ret)
+      return ret;
+
+    ret = log_->RefreshProjection();
+    if (ret)
+      return ret;
+
+    it = MapToObjectSet(position);
+    assert(it != objsets_.end());
+  }
+
+  oid = ObjectName(it->second, position);
   return 0;
 }
 
 int Striper::InitDataObject(uint64_t position, Backend *backend)
 {
-  assert(!stripes_.empty());
-  auto it = stripes_.upper_bound(position);
-  assert(it != stripes_.begin());
-  it--;
-  assert(position <= it->second.max_pos);
-  auto view = it->second.view;
+  auto it = MapToObjectSet(position);
+  if (it == objsets_.end())
+    return -EFAULT;
 
-  // logical layout
-  const uint64_t stripe_num = position / view.stripe_width;
-  const uint64_t stripepos = position % view.stripe_width;
-  const uint64_t objectsetno = stripe_num / view.entries_per_object;
-  const uint64_t objectno = objectsetno * view.stripe_width + stripepos;
+  uint64_t objectno = it->second.objectno(position);
+  auto oid = ObjectName(objectno);
+  auto layout = it->second.layout();
 
-  std::stringstream ss;
-  ss << log_name_ << "." << objectno;
-  const std::string oid = ss.str();
+  return backend->InitDataObject(oid,
+      layout.entry_size(),
+      layout.num_objects(),
+      layout.num_stripes(),
+      objectno);
+}
 
-  return backend->InitDataObject(oid, view.entry_size, view.stripe_width,
-      view.entries_per_object, objectno);
 }

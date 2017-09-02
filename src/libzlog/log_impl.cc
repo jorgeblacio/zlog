@@ -149,118 +149,6 @@ class new_stripe_notifier {
   bool *pred_;
 };
 
-#ifdef BACKEND_SUPPORT_DISABLED
-/*
- * Create a new stripe empty stripe.
- *
- * TODO:
- *   CreateNewStripe, CreateCut, SetStripeWidth are all nearly identical
- *   methods that could be unified.
- */
-int LogImpl::CreateNewStripe(uint64_t last_epoch)
-{
-  assert(backend_ver == 2);
-
-  /*
-   * If creation of a new stripe is pending then we will block on the
-   * condition variable until the creating thread has completed or there was
-   * an error.
-   *
-   * There are two ways that we rate limit new stripe creation. The first is
-   * blocking if a new stripe is pending, and the second is that we retry if
-   * once we start we notice that a new stripe was created since we began. The
-   * second case is important for cases in which a bunch of contexts are
-   * trying to create a new stripe but they never actually interact through
-   * the pending flag.
-   */
-#if 1
-  std::unique_lock<std::mutex> l(lock_);
-
-  if (new_stripe_pending_) {
-    //std::cout << "new stripe pending. waiting..." << std::endl;
-    bool done = new_stripe_cond_.wait_for(l, std::chrono::seconds(1),
-        [this](){ return !new_stripe_pending_; });
-    if (!done)
-      std::cerr << "waiting on new stripe: timeout!" << std::endl;
-    return 0;
-  }
-
-  new_stripe_pending_ = true;
-  l.unlock();
-
-  new_stripe_notifier completed(&lock_,
-      &new_stripe_cond_, &new_stripe_pending_);
-
-  if (mapper_.Epoch() > last_epoch) {
-    //std::cout << "    update occurred... trying again" << std::endl;
-    return 0;
-  }
-#endif
-
-  /*
-   * Get the current projection. We'll add the new striping width when we
-   * propose the next projection/epoch.
-   */
-  uint64_t epoch;
-  zlog_proto::MetaLog config;
-  int ret = new_backend->LatestProjection(metalog_oid_, &epoch, config);
-  if (ret != Backend::ZLOG_OK) {
-    std::cerr << "failed to get projection ret " << ret << std::endl;
-    return ret;
-  }
-
-  /*
-   * Each call to CreateNewStripe is followed by a projection refresh. If this
-   * case holds then the projection will get an update relative to the last
-   * update that triggered the stripe creation so we can return in this case
-   * too!
-   */
-  if (epoch > last_epoch) {
-    //std::cout << "    update occurred... trying again" << std::endl;
-    return 0;
-  }
-
-  //std::cout << "creating new stripe!" << std::endl;
-
-  StripeHistory hist;
-  ret = hist.Deserialize(config);
-  if (ret)
-    return ret;
-  assert(!hist.Empty());
-
-  std::vector<std::string> objects;
-  mapper_.LatestObjectSet(objects, hist);
-
-  uint64_t max_position;
-  ret = Seal(objects, epoch, &max_position);
-  if (ret) {
-    std::cerr << "failed to seal " << ret << std::endl;
-    return ret;
-  }
-
-  /*
-   * When we create a new empty stripe we have sealed the previous stripe and
-   * gotten the max_position for that stripe. However, if no writes occurred
-   * to the new stripe then max_position will be zero.
-   */
-  uint64_t next_epoch = epoch + 1;
-  hist.CloneLatestStripe(max_position, next_epoch);
-  const auto hist_data = hist.Serialize();
-
-  /*
-   * Propose the updated projection for the next epoch.
-   */
-  ret = new_backend->SetProjection(metalog_oid_, next_epoch, hist_data);
-  if (ret != Backend::ZLOG_OK) {
-    std::cerr << "failed to set new epoch " << next_epoch
-      << " ret " << ret << std::endl;
-    return ret;
-  }
-
-  return 0;
-}
-#endif
-
 int LogImpl::SetStripeWidth(int width)
 {
   /*
@@ -495,23 +383,6 @@ int LogImpl::CheckTail(const std::set<uint64_t>& stream_ids,
   assert(0);
 }
 
-/*
- * TODO:
- *
- * 1. When a stale epoch is encountered the projection is refreshed and the
- * append is retried with a new tail position retrieved from the sequencer.
- * This means that a hole is created each time an append hits a stale epoch.
- * If there are a lot of clients, a large hole is created each time the
- * projection is refreshed. Is this necessary in all cases? When could a
- * client try again with the same position? We could also mitigate this affect
- * a bit by having the sequencer, upon startup, begin finding log tails
- * proactively instead of waiting for a client to perform a check tail.
- *
- * 2. When a stale epoch return code occurs we continuously look for a new
- * projection and retry the append. to avoid just spinning and creating holes
- * we pause for a second. other options include waiting to observe an _actual_
- * change to a new projection. that is probably better...
- */
 int LogImpl::Append(const Slice& data, uint64_t *pposition)
 {
   for (;;) {
@@ -520,20 +391,12 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
     if (ret)
       return ret;
 
-    uint64_t epoch = 0; // TODO: unused
     std::string oid;
-    ret = striper_.MapPosition(position, oid);
-    if (ret == -EFAULT) {
-      std::cout << "extending view" << std::endl;
-      ret = new_backend->ExtendViews(metalog_oid_, position);
-      if (ret)
-        return ret;
-      ret = RefreshProjection();
-      if (ret)
-        return ret;
-      sleep(1);
-      continue;
-    }
+    ret = striper_.MapPosition(position, oid, true);
+    if (ret)
+      return ret;
+
+    uint64_t epoch = 0; // TODO: unused
 
     // TODO: we should be sending IOs through a layer that takes care of
     // object initialization for us...
@@ -690,7 +553,7 @@ int LogImpl::Read(uint64_t position, std::string *data)
   for (;;) {
     uint64_t epoch = 0; // TODO: unused
     std::string oid;
-    striper_.MapPosition(position, oid);
+    striper_.MapPosition(position, oid, false);
 
     int ret = new_backend->Read(oid, epoch, position, data);
     if (ret < 0) {

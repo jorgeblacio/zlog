@@ -44,6 +44,8 @@ static void sigint_handler(int sig)
 static uint64_t count = 0;
 static std::vector<std::pair<uint64_t,uint64_t>> trace;
 
+static bool verify_read = false;
+
 static void worker(zlog::Log *log, size_t entry_size, bool dotrace)
 {
   // create random data to use for payloads
@@ -69,7 +71,6 @@ static void worker(zlog::Log *log, size_t entry_size, bool dotrace)
     size_t buf_offset = rand_dist(gen);
     uint64_t start = __getns(CLOCK_REALTIME); // may need to compare across machines
     int ret = log->Append(Slice(rand_buf_raw + buf_offset, entry_size), &position);
-    std::cout << position << std::endl;
     uint64_t end = __getns(CLOCK_REALTIME);
     checkret(ret, 0);
     if (dotrace) {
@@ -77,12 +78,12 @@ static void worker(zlog::Log *log, size_t entry_size, bool dotrace)
     }
     count++;
 
-    // temp
-    std::string val;
-    ret = log->Read(position, &val);
-    checkret(ret, 0);
-
-    assert(memcmp(val.c_str(), rand_buf_raw + buf_offset, entry_size) == 0);
+    if (verify_read) {
+      std::string val;
+      ret = log->Read(position, &val);
+      checkret(ret, 0);
+      assert(memcmp(val.c_str(), rand_buf_raw + buf_offset, entry_size) == 0);
+    }
   }
 }
 
@@ -123,6 +124,7 @@ int main(int argc, char **argv)
     ("trace", po::value<std::string>(&tracefn)->default_value(""), "trace file")
     ("backend", po::value<std::string>(&backend)->default_value("ceph"), "backend")
     ("lmdbdir", po::value<std::string>(&lmdbdir)->default_value(""), "lmdb dir")
+    ("vread", po::value<bool>(&verify_read)->default_value(false), "verify read")
     ;
 
   po::options_description all_opts("Allowed options");

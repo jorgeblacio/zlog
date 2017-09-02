@@ -62,7 +62,7 @@ int Log::CreateWithStripeWidth(Backend *backend, const std::string& name,
 
   LogImpl *impl = new LogImpl;
 
-  impl->new_backend = backend;
+  impl->be = backend;
   impl->name_ = name;
   impl->metalog_oid_ = metalog_oid;
   impl->seqr = seqr;
@@ -108,7 +108,7 @@ int Log::Open(Backend *backend, const std::string& name,
 
   LogImpl *impl = new LogImpl;
 
-  impl->new_backend = backend;
+  impl->be = backend;
   impl->name_ = name;
   impl->metalog_oid_ = metalog_oid;
   impl->seqr = seqr;
@@ -157,7 +157,7 @@ int LogImpl::SetStripeWidth(int width)
    */
   uint64_t epoch;
   zlog_proto::MetaLog config;
-  int ret = new_backend->LatestProjection(metalog_oid_, &epoch, config);
+  int ret = be->LatestProjection(metalog_oid_, &epoch, config);
   if (ret != Backend::ZLOG_OK) {
     std::cerr << "failed to get projection ret " << ret << std::endl;
     return ret;
@@ -186,7 +186,7 @@ int LogImpl::SetStripeWidth(int width)
   /*
    * Propose the updated projection for the next epoch.
    */
-  ret = new_backend->SetProjection(metalog_oid_, next_epoch, hist_data);
+  ret = be->SetProjection(metalog_oid_, next_epoch, hist_data);
   if (ret != Backend::ZLOG_OK) {
     std::cerr << "failed to set new epoch " << next_epoch
       << " ret " << ret << std::endl;
@@ -204,7 +204,7 @@ int LogImpl::CreateCut(uint64_t *pepoch, uint64_t *maxpos)
    */
   uint64_t epoch;
   zlog_proto::MetaLog config;
-  int ret = new_backend->LatestProjection(metalog_oid_, &epoch, config);
+  int ret = be->LatestProjection(metalog_oid_, &epoch, config);
   if (ret != Backend::ZLOG_OK) {
     std::cerr << "failed to get projection ret " << ret << std::endl;
     return ret;
@@ -230,7 +230,7 @@ int LogImpl::CreateCut(uint64_t *pepoch, uint64_t *maxpos)
    * Propose the next epoch / projection.
    */
   uint64_t next_epoch = epoch + 1;
-  ret = new_backend->SetProjection(metalog_oid_, next_epoch, config);
+  ret = be->SetProjection(metalog_oid_, next_epoch, config);
   if (ret != Backend::ZLOG_OK) {
     std::cerr << "failed to set new epoch " << next_epoch
       << " ret " << ret << std::endl;
@@ -250,7 +250,7 @@ int LogImpl::Seal(const std::vector<std::string>& objects,
    * Seal each object
    */
   for (const auto& oid : objects) {
-    int ret = new_backend->Seal(oid, epoch);
+    int ret = be->Seal(oid, epoch);
     if (ret != Backend::ZLOG_OK) {
       std::cerr << "failed to seal object" << std::endl;
       return ret;
@@ -270,7 +270,7 @@ int LogImpl::Seal(const std::vector<std::string>& objects,
      * we'll receive -EINVAL.
      */
     uint64_t this_pos;
-    int ret = new_backend->MaxPos(oid, epoch, &this_pos);
+    int ret = be->MaxPos(oid, epoch, &this_pos);
     if (ret != Backend::ZLOG_OK) {
       std::cerr << "failed to find max pos ret " << ret << std::endl;
       return ret;
@@ -294,7 +294,7 @@ int LogImpl::RefreshProjection()
 {
   for (;;) {
     std::list<Backend::View> views;
-    int ret = new_backend->ReadViews(metalog_oid_, 0, views);
+    int ret = be->ReadViews(metalog_oid_, 0, views);
     if (ret != Backend::ZLOG_OK) {
       std::cerr << "failed to get projection ret " << ret << std::endl;
       sleep(1);
@@ -310,7 +310,7 @@ int LogImpl::RefreshProjection()
 int LogImpl::CheckTail(uint64_t *pposition, bool increment)
 {
   for (;;) {
-    int ret = seqr->CheckTail(mapper_.Epoch(), new_backend->pool(),
+    int ret = seqr->CheckTail(mapper_.Epoch(), be->pool(),
         name_, pposition, increment);
     if (ret == -EAGAIN) {
       //std::cerr << "check tail ret -EAGAIN" << std::endl;
@@ -340,7 +340,7 @@ int LogImpl::CheckTail(std::vector<uint64_t>& positions, size_t count)
 
   for (;;) {
     std::vector<uint64_t> result;
-    int ret = seqr->CheckTail(mapper_.Epoch(), new_backend->pool(),
+    int ret = seqr->CheckTail(mapper_.Epoch(), be->pool(),
         name_, result, count);
     if (ret == -EAGAIN) {
       //std::cerr << "check tail ret -EAGAIN" << std::endl;
@@ -365,7 +365,7 @@ int LogImpl::CheckTail(const std::set<uint64_t>& stream_ids,
     uint64_t *pposition, bool increment)
 {
   for (;;) {
-    int ret = seqr->CheckTail(mapper_.Epoch(), new_backend->pool(),
+    int ret = seqr->CheckTail(mapper_.Epoch(), be->pool(),
         name_, stream_ids, stream_backpointers, pposition, increment);
     if (ret == -EAGAIN) {
       //std::cerr << "check tail ret -EAGAIN" << std::endl;
@@ -400,7 +400,7 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
 
     int retries = 3;
     for (;;) {
-      ret = new_backend->Write(oid, data, epoch, position);
+      ret = be->Write(oid, data, epoch, position);
 
       if (!ret) {
         if (pposition)
@@ -413,7 +413,7 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
       }
 
       if (ret == -ENOENT) {
-        ret = striper_.InitDataObject(position, new_backend);
+        ret = striper_.InitDataObject(position, be);
         if (!ret)
           continue; // retry write
         return ret;
@@ -431,7 +431,7 @@ int LogImpl::Fill(uint64_t epoch, uint64_t position)
     std::string oid;
     mapper_.FindObject(position, &oid, NULL);
 
-    int ret = new_backend->Fill(oid, epoch, position);
+    int ret = be->Fill(oid, epoch, position);
     if (ret < 0) {
       std::cerr << "fill: failed ret " << ret << std::endl;
       return ret;
@@ -459,7 +459,7 @@ int LogImpl::Fill(uint64_t position)
     std::string oid;
     mapper_.FindObject(position, &oid, &epoch);
 
-    int ret = new_backend->Fill(oid, epoch, position);
+    int ret = be->Fill(oid, epoch, position);
     if (ret < 0) {
       std::cerr << "fill: failed ret " << ret << std::endl;
       return ret;
@@ -487,7 +487,7 @@ int LogImpl::Trim(uint64_t position)
     std::string oid;
     mapper_.FindObject(position, &oid, &epoch);
 
-    int ret = new_backend->Trim(oid, epoch, position);
+    int ret = be->Trim(oid, epoch, position);
     if (ret < 0) {
       std::cerr << "trim: failed ret " << ret << std::endl;
       return ret;
@@ -513,7 +513,7 @@ int LogImpl::Read(uint64_t epoch, uint64_t position, std::string *data)
     std::string oid;
     mapper_.FindObject(position, &oid, NULL);
 
-    int ret = new_backend->Read(oid, epoch, position, data);
+    int ret = be->Read(oid, epoch, position, data);
     if (ret < 0) {
       std::cerr << "read failed ret " << ret << std::endl;
       return ret;
@@ -545,7 +545,7 @@ int LogImpl::Read(uint64_t position, std::string *data)
     std::string oid;
     striper_.MapPosition(position, oid, false);
 
-    int ret = new_backend->Read(oid, epoch, position, data);
+    int ret = be->Read(oid, epoch, position, data);
     if (ret < 0) {
       if (ret == -ENOENT) {
         ret = Backend::ZLOG_NOT_WRITTEN;

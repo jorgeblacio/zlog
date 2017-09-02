@@ -125,30 +125,17 @@ class LogImpl : public Log {
   std::string metalog_oid_;
   SeqrClient *seqr;
 
-  Backend *new_backend;
-
-#if BACKEND_SUPPORT_DISABLE
-  TmpBackend *backend;
-  int backend_ver;
-
-  void set_backend_v2() {
-    assert(backend);
-    delete backend;
-    backend = TmpBackend::CreateV2();
-    backend_ver = 2;
-  }
-
-  bool new_stripe_pending_;
-#endif
+  // <<< START REVIEWED >>>
+  Backend *be;
+  // <<< END REVIEWED >>>
 
   LogMapper mapper_;
   Striper striper_;
 
   int ExtendViews(uint64_t position) {
-    return new_backend->ExtendViews(metalog_oid_, position);
+    return be->ExtendViews(metalog_oid_, position);
   }
 
-  std::condition_variable new_stripe_cond_;
   std::mutex lock_;
 };
 

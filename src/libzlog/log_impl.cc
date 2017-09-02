@@ -398,39 +398,29 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
 
     uint64_t epoch = 0; // TODO: unused
 
-    // TODO: we should be sending IOs through a layer that takes care of
-    // object initialization for us...
-    ret = new_backend->Write(oid, data, epoch, position);
-    if (ret < 0) {
+    int retries = 3;
+    for (;;) {
+      ret = new_backend->Write(oid, data, epoch, position);
+
+      if (!ret) {
+        if (pposition)
+          *pposition = position;
+        return 0;
+      }
+
+      if (!--retries) {
+        return -ETIMEDOUT;
+      }
+
       if (ret == -ENOENT) {
         ret = striper_.InitDataObject(position, new_backend);
-        if (ret) {
-          std::cerr << "append: failed to init ret " << ret << std::endl;
-          return ret;
-        }
-        ret = new_backend->Write(oid, data, epoch, position);
-      }
-      if (ret < 0) {
-        std::cerr << "append: failed ret " << ret << std::endl;
+        if (!ret)
+          continue; // retry write
         return ret;
       }
-    }
 
-    if (ret == Backend::ZLOG_OK) {
-      if (pposition)
-        *pposition = position;
-      return 0;
+      return ret;
     }
-
-    if (ret == Backend::ZLOG_STALE_EPOCH) {
-      sleep(1); // avoid spinning in this loop
-      ret = RefreshProjection();
-      if (ret)
-        return ret;
-      continue;
-    }
-
-    assert(ret == Backend::ZLOG_READ_ONLY);
   }
   assert(0);
 }

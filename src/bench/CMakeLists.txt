@@ -1,3 +1,5 @@
+add_subdirectory(cls_zlog)
+
 add_executable(zlog-append-bench append.cc)
 target_link_libraries(zlog-append-bench
     libzlog

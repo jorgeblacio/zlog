@@ -20,6 +20,7 @@ endif(WITH_JNI)
 
 include_directories(SYSTEM "${CMAKE_SOURCE_DIR}/src/rapidjson/include")
 add_subdirectory(tools)
+add_subdirectory(bench)
 
 ################################################################################
 ################################################################################

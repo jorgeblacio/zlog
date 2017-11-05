@@ -30,6 +30,7 @@ add_subdirectory(kvstore)
 add_subdirectory(zstate)
 add_subdirectory(tools)
 add_subdirectory(bench)
+add_subdirectory(sequencer)
 
 option(WITH_JNI "build with JNI" OFF)
 if(WITH_JNI)

@@ -54,5 +54,6 @@ elseif(WITH_CEPH)
 endif()
 
 find_package(Backtrace)
+find_package(Seastar REQUIRED)
 
 add_subdirectory(src)

@@ -9,6 +9,9 @@
 #include <chrono>
 #include <array>
 
+#undef SEQ_BASIC
+#define SEQ_BASIC 1
+
 namespace po = boost::program_options;
 
 class connection {
@@ -32,7 +35,11 @@ class connection {
       return out.write(seastar::sstring{"a", 1}).then([this] {
         return out.flush();
       }).then([this] {
+#ifdef SEQ_BASIC
+        return in.read_exactly(sizeof(uint64_t)).then([this] (auto&& data) {
+#else
         return in.read_exactly(1).then([this] (auto&& data) {
+#endif
           if (data.empty()) {
             return seastar::make_exception_future(std::runtime_error("no data"));
           }

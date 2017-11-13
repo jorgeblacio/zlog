@@ -3,6 +3,9 @@
 #include <net/api.hh>
 #include <core/reactor.hh>
 
+#undef SEQ_BASIC
+#define SEQ_BASIC 4
+
 static inline uint64_t __getns(clockid_t clock)
 {
   struct timespec ts;
@@ -15,6 +18,10 @@ static inline uint64_t getns()
 {
   return __getns(CLOCK_MONOTONIC);
 }
+
+#ifdef SEQ_BASIC
+static std::atomic<uint64_t> seq[SEQ_BASIC];
+#endif
 
 class connection {
  public:
@@ -31,7 +38,12 @@ class connection {
     return in.read_exactly(1).then([this] (auto&& data) mutable {
       if (!data.empty()) {
         counter++;
+#ifdef SEQ_BASIC
+        uint64_t pos = seq[counter % SEQ_BASIC].fetch_add(1);
+        return out.write(seastar::sstring{(char*)&pos, sizeof(pos)});
+#else
         return out.write(seastar::sstring{"a", 1});
+#endif
       }
       return in.close();
     });

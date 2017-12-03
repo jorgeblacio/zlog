@@ -1,16 +1,17 @@
-add_executable(zlog-seqd seqd.cc)
+link_directories(${SEASTAR_LIBRARY_DIRS})
 
-set_target_properties(zlog-seqd PROPERTIES CXX_STANDARD 14)
-target_compile_definitions(zlog-seqd
-  PUBLIC $<TARGET_PROPERTY:Seastar::Seastar,INTERFACE_COMPILE_DEFINITIONS>)
-target_include_directories(zlog-seqd
-  PUBLIC $<TARGET_PROPERTY:Seastar::Seastar,INTERFACE_INCLUDE_DIRECTORIES>)
-target_link_libraries(zlog-seqd Seastar::Seastar)
+add_executable(zlog-seqd seqd.cc)
+set_target_properties(zlog-seqd PROPERTIES
+  CXX_STANDARD 14
+  LINK_FLAGS -pthread)
+target_compile_options(zlog-seqd PUBLIC ${SEASTAR_CFLAGS})
+target_include_directories(zlog-seqd PUBLIC ${SEASTAR_INCLUDE_DIRS})
+target_link_libraries(zlog-seqd -lseastar ${SEASTAR_LIBRARIES} -ldl)
 
 add_executable(client client.cc)
-set_target_properties(client PROPERTIES CXX_STANDARD 14)
-target_compile_definitions(client
-  PUBLIC $<TARGET_PROPERTY:Seastar::Seastar,INTERFACE_COMPILE_DEFINITIONS>)
-target_include_directories(client
-  PUBLIC $<TARGET_PROPERTY:Seastar::Seastar,INTERFACE_INCLUDE_DIRECTORIES>)
-target_link_libraries(client Seastar::Seastar)
+set_target_properties(client PROPERTIES
+  CXX_STANDARD 14
+  LINK_FLAGS -pthread)
+target_compile_options(client PUBLIC ${SEASTAR_CFLAGS})
+target_include_directories(client PUBLIC ${SEASTAR_INCLUDE_DIRS})
+target_link_libraries(client -lseastar ${SEASTAR_LIBRARIES} -ldl)

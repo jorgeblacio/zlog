@@ -1,0 +1,7 @@
+all: zlog-seqd client
+
+zlog-seqd: seqd.cc
+	g++ -Wall $(shell pkg-config --cflags --libs seastar) -o $@ $<
+
+client: client.cc
+	g++ -Wall $(shell pkg-config --cflags --libs seastar) -o $@ $<

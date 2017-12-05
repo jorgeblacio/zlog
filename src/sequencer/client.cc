@@ -43,6 +43,11 @@ class connection {
           if (data.empty()) {
             return seastar::make_exception_future(std::runtime_error("no data"));
           }
+#if 0
+          uint64_t c;
+          memcpy(&c, (void*)data.get(), sizeof(c));
+          std::cout << c << std::endl;
+#endif
           ops++;
           return seastar::make_ready_future<>();
         });

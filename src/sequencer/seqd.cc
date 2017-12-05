@@ -3,9 +3,6 @@
 #include <net/api.hh>
 #include <core/reactor.hh>
 
-#undef SEQ_BASIC
-#define SEQ_BASIC 4
-
 static inline uint64_t __getns(clockid_t clock)
 {
   struct timespec ts;
@@ -19,31 +16,47 @@ static inline uint64_t getns()
   return __getns(CLOCK_MONOTONIC);
 }
 
-#ifdef SEQ_BASIC
-static std::atomic<uint64_t> seq[SEQ_BASIC];
-#endif
+class counter_state {
+ public:
+  counter_state() :
+    counter(0) {
+  }
+
+  seastar::future<> stop() {
+    return seastar::make_ready_future<>();
+  }
+
+  uint64_t next() {
+    return counter++;
+  }
+
+  uint64_t curr() {
+    return counter;
+  }
+
+  uint64_t counter;
+};
 
 class connection {
  public:
   connection(seastar::connected_socket&& socket, seastar::socket_address addr,
-      uint64_t& counter) :
+      uint64_t& counter, seastar::sharded<counter_state>& counters) :
     socket(std::move(socket)),
     addr(addr),
     in(this->socket.input()),
     out(this->socket.output()),
-    counter(counter)
+    counter(counter),
+    counters(counters)
   {}
 
   seastar::future<> process() {
     return in.read_exactly(1).then([this] (auto&& data) mutable {
       if (!data.empty()) {
-        counter++;
-#ifdef SEQ_BASIC
-        uint64_t pos = seq[counter % SEQ_BASIC].fetch_add(1);
-        return out.write(seastar::sstring{(char*)&pos, sizeof(pos)});
-#else
-        return out.write(seastar::sstring{"a", 1});
-#endif
+	auto cpu = seastar::smp::count / 2;
+        return counters.invoke_on(cpu, &counter_state::next).then([&] (uint64_t c) {
+          counter++;
+          return out.write(seastar::sstring{(char*)&c, sizeof(c)});
+        });
       }
       return in.close();
     });
@@ -54,12 +67,14 @@ class connection {
   seastar::input_stream<char> in;
   seastar::output_stream<char> out;
   uint64_t& counter;
+  seastar::sharded<counter_state>& counters;
 };
 
 class server {
  public:
-  server(uint16_t port) :
-    port(port)
+  server(uint16_t port, seastar::sharded<counter_state>& counters) :
+    port(port),
+    counters(counters)
   {
     startns = getns();
     counter = 0;
@@ -75,7 +90,7 @@ class server {
     seastar::keep_doing([this] {
       return listener.accept().then([this] (seastar::connected_socket fd,
             seastar::socket_address addr) mutable {
-        seastar::do_with(connection(std::move(fd), addr, counter), [] (auto& conn) {
+        seastar::do_with(connection(std::move(fd), addr, counter, counters), [] (auto& conn) {
           return seastar::do_until([&conn] { return conn.in.eof(); }, [&conn] {
             return conn.process().then([&conn] {
               return conn.out.flush();
@@ -104,6 +119,7 @@ class server {
   uint16_t port;
   uint64_t counter;
   uint64_t startns;
+  seastar::sharded<counter_state>& counters;
 };
 
 class stats_printer {
@@ -132,6 +148,7 @@ class stats_printer {
 
 int main(int argc, char **argv)
 {
+  seastar::sharded<counter_state> counters;
   seastar::sharded<server> sharded_server;
   stats_printer stats(sharded_server);
 
@@ -139,7 +156,10 @@ int main(int argc, char **argv)
   try {
     return app.run_deprecated(argc, argv, [&] {
       seastar::engine().at_exit([&sharded_server] { return sharded_server.stop(); });
-      return sharded_server.start(5678).then([&] {
+      seastar::engine().at_exit([&counters] { return counters.stop(); });
+      return counters.start().then([&] {
+        return sharded_server.start(5678, std::ref(counters));
+      }).then([&] {
         return sharded_server.invoke_on_all(&server::start);
       }).then([&] {
         stats.start();

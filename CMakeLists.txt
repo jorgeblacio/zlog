@@ -55,7 +55,4 @@ endif()
 
 find_package(Backtrace)
 
-find_package(PkgConfig)
-pkg_check_modules(SEASTAR REQUIRED seastar)
-
 add_subdirectory(src)

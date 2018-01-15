@@ -1,0 +1,19 @@
+def distros = ["ubuntu:xenial", "fedora:27"]
+def tasks = [:]
+
+for (int i = 0; i < distros.size(); i++) {
+  def distroName = distros[i]
+  tasks["${distroName}"] = {
+    node {
+      withEnv(["IMAGE=${distroName}"]) {
+        checkout scm
+        sh 'git submodule update --init --recursive'
+        sh 'ci/one.sh'
+      }
+    }
+  }
+}
+
+stage("Build") {
+  parallel tasks
+}

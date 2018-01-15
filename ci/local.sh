@@ -1,17 +1,14 @@
 #!/bin/bash
-
 set -e
-set -x
 
-THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ZLOG_DIR=${THIS_DIR}/../
+images="
+fedora:27
+ubuntu:xenial
+"
 
-export TRAVIS_BRANCH=
-export TRAVIS_OS_NAME="linux"
-export DOCKER_IMAGE=ubuntu:xenial
-export TRAVIS_BUILD_DIR=${ZLOG_DIR}
-
-trap "docker kill micro-osd ceph-plugin-built; docker rm micro-osd ceph-plugin-built" EXIT
-
-ci/before_install.sh
-ci/script.sh
+for image in ${images}; do
+  name="zlog/deps_${image/:/_}"
+  docker build -t ${name} --build-arg BASE=${image} \
+    -f ci/base/Dockerfile .
+  docker run -w /src/zlog ${name} ci/run-tests.sh
+done

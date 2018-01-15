@@ -78,7 +78,7 @@ function rpms() {
       ;;
   esac
 
-  sed -e 's/@//g' < zlog.spec.in > ${tmp}/zlog.spec
+  sed -e 's/@//g' < ${ZLOG_DIR}/zlog.spec.in > ${tmp}/zlog.spec
   $SUDO $builddepcmd ${tmp}/zlog.spec 2>&1 | tee ${tmp}/yum-builddep.out
   ! grep -q -i error: ${tmp}/yum-builddep.out || exit 1
 

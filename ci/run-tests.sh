@@ -2,6 +2,8 @@
 set -e
 set -x
 
+# TODO: add coverage and ceph tests
+
 zlog-seqr --port 5678 --streams --daemon
 
 tests="zlog_test_backend_lmdb zlog_test_backend_ram"

@@ -34,7 +34,8 @@ case $ID in
     esac
 
     $SUDO apt-get update
-    $SUDO apt-get install -y librados-dev ceph
+    $SUDO env DEBIAN_FRONTEND=noninteractive \
+      apt-get install -y librados-dev ceph
     ;;
 
   centos|fedora)

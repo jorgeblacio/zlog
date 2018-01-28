@@ -20,16 +20,18 @@ case $ID in
       apt-get install -y wget curl lsb-release \
       software-properties-common apt-transport-https
 
-    ceph_ver=luminous
-    ceph_deb_release=$(lsb_release -sc)
-    ceph_http_code=$(curl -o /dev/null --silent --head --write-out '%{http_code}' \
-      http://download.ceph.com/debian-${ceph_ver}/dists/${ceph_deb_release}/)
-    if [ $ceph_http_code == "404" ]; then
-      ceph_deb_release=xenial
-    fi
-
-    wget -q -O- 'https://download.ceph.com/keys/release.asc' | $SUDO apt-key add -
-    $SUDO apt-add-repository "deb https://download.ceph.com/debian-${ceph_ver}/ ${ceph_deb_release} main"
+    case $(lsb_release -sc) in
+      xenial)
+        ceph_ver=luminous
+        ceph_deb_release=$(lsb_release -sc)
+        ceph_http_code=$(curl -o /dev/null --silent --head --write-out '%{http_code}' \
+          http://download.ceph.com/debian-${ceph_ver}/dists/${ceph_deb_release}/)
+        wget -q -O- 'https://download.ceph.com/keys/release.asc' | $SUDO apt-key add -
+        $SUDO apt-add-repository "deb https://download.ceph.com/debian-${ceph_ver}/ ${ceph_deb_release} main"
+        ;;
+      *)
+        ;;
+    esac
 
     $SUDO apt-get update
     $SUDO apt-get install -y librados-dev ceph

@@ -1,4 +1,13 @@
-def distros = ["ubuntu:xenial", "fedora:27"]
+def distros = []
+distros.push("centos:7")
+distros.push("fedora:27")
+distros.push("fedora:26")
+distros.push("ubuntu:bionic")
+distros.push("ubuntu:artful")
+distros.push("ubuntu:xenial")
+distros.push("debian:sid")
+distros.push("debian:buster")
+distros.push("debian:stretch")
 def tasks = [:]
 
 for (int i = 0; i < distros.size(); i++) {

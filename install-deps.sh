@@ -3,6 +3,7 @@
 # adapted from https://github.com/ceph/ceph/blob/master/install-deps.sh
 
 set -e
+set -x
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
   brew update || true

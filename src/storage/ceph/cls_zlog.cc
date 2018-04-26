@@ -15,6 +15,8 @@
 # include "storage/ceph/cls_zlog.pb.h"
 # include "storage/ceph/protobuf_bufferlist_adapter.h"
 #endif
+#include "roaring.c"
+#include "roaring.hh"
 
 CLS_VER(1,0)
 CLS_NAME(zlog)
@@ -118,25 +120,21 @@ static bool epoch_guard(const zlog_ceph_proto::LogObjectHeader& header,
   }
 }
 
-static int get_object_size(cls_method_context_t hctx, uint64_t *size)
-{
-  int ret = cls_cxx_stat(hctx, size, NULL);
-  if (ret < 0) {
-    if (ret == -ENOENT) {
-      *size = 0;
-    } else {
-      return ret;
-    }
-  }
-  return 0;
-}
-
 static int entry_read_header(cls_method_context_t hctx,
     zlog_ceph_proto::LogObjectHeader& hdr)
 {
   ceph::bufferlist bl;
   int ret = cls_cxx_getxattr(hctx, LOG_HEADER_KEY, &bl);
   if (ret < 0) {
+    // TODO: wrap Roaring calls in try/catch blocks
+    if (ret == -ENOENT) {
+      Roaring r;
+      const size_t size = r.getSizeInBytes();
+      char buf[size];
+      r.write(buf, false);
+      hdr.set_written(buf, size);
+      hdr.set_invalid(buf, size);
+    }
     // ENOENT is OK, but ENODATA means the object exists without a header. This
     // would be a violation of our basic protocol assumptions. Return an error
     // value that we won't catch.
@@ -241,47 +239,35 @@ static int entry_read(cls_method_context_t hctx, ceph::bufferlist *in,
     }
   }
 
+  if (!header.has_written() || !header.has_invalid()) {
+    return -EIO;
+  }
+
+  auto written = Roaring::read(header.written().c_str(), false);
+
   const uint32_t index = op.pos() / op.stride();
-  const uint32_t slot_size = sizeof(entry_header) + op.max_size();
+
+  if (!written.contains(index)) {
+    CLS_LOG(10, "read(): entry not written");
+    return -ENOENT;
+  }
+
+  auto invalid = Roaring::read(header.invalid().c_str(), false);
+
+  if (invalid.contains(index)) {
+    CLS_LOG(10, "read(): entry is invalid");
+    return -ENODATA;
+  }
+
+  const uint32_t slot_size = op.max_size();
   const uint32_t offset = index * slot_size;
 
-  uint64_t object_size;
-  ret = get_object_size(hctx, &object_size);
+  ret = cls_cxx_read(hctx, offset, slot_size, out);
   if (ret < 0) {
-    CLS_ERR("ERROR: read(): get object size failed %d", ret);
-    return ret;
+    CLS_ERR("ERROR: read(): failed to read slot %d", ret);
   }
 
-  if (offset < object_size) {
-    ceph::bufferlist bl;
-    ret = cls_cxx_read(hctx, offset, slot_size, &bl);
-    if (ret < 0) {
-      CLS_ERR("ERROR: read(): failed to read slot %d", ret);
-      return ret;
-    }
-
-    entry_header hdr;
-    if (!hdr.decode(bl)) {
-      CLS_ERR("ERROR: read(): read incomplete header");
-      return -EIO;
-    }
-
-    if (!hdr.exists()) {
-      CLS_LOG(10, "read(): entry not written");
-      return -ENOENT;
-    }
-
-    if (hdr.invalid()) {
-      return -ENODATA;
-    }
-
-    out->append(bl.c_str() + sizeof(entry_header), hdr.size());
-
-    return 0;
-  }
-
-  CLS_LOG(10, "read(): entry not written");
-  return -ENOENT;
+  return 0;
 }
 
 static int entry_write(cls_method_context_t hctx, ceph::bufferlist *in, ceph::bufferlist *out)
@@ -317,11 +303,6 @@ static int entry_write(cls_method_context_t hctx, ceph::bufferlist *in, ceph::bu
   } else {
     header.set_stride(op.stride());
     header.set_max_size(op.max_size());
-    ret = entry_write_header(hctx, header);
-    if (ret < 0) {
-      CLS_ERR("ERROR: write(): failed to write header %d", ret);
-      return ret;
-    }
   }
 
   if (op.data().size() > header.max_size()) {
@@ -329,53 +310,46 @@ static int entry_write(cls_method_context_t hctx, ceph::bufferlist *in, ceph::bu
     return -EINVAL;
   }
 
+  if (!header.has_written() || !header.has_invalid()) {
+    return -EIO;
+  }
+
+  auto written = Roaring::read(header.written().c_str(), false);
+
   const uint32_t index = op.pos() / header.stride();
-  const uint32_t slot_size = sizeof(entry_header) + header.max_size();
+
+  if (written.contains(index)) {
+    CLS_LOG(10, "write(): entry position non-empty");
+    return -EROFS;
+  }
+
+  written.add(index);
+
+  const uint32_t slot_size = header.max_size();
   const uint32_t offset = index * slot_size;
 
-  uint64_t object_size;
-  ret = get_object_size(hctx, &object_size);
-  if (ret < 0) {
-    CLS_ERR("ERROR: write(): get object size failed: %d", ret);
-    return ret;
-  }
-
-  if (offset < object_size) {
-    ceph::bufferlist bl;
-    ret = cls_cxx_read(hctx, offset, sizeof(entry_header), &bl);
-    if (ret < 0) {
-      CLS_ERR("ERROR: write(): failed to read entry header %d", ret);
-      return ret;
-    }
-
-    entry_header hdr;
-    if (!hdr.decode(bl)) {
-      CLS_ERR("ERROR: write(): read incomplete entry header");
-      return -EIO;
-    }
-
-    if (hdr.exists()) {
-      CLS_LOG(10, "write(): entry position non-empty");
-      return -EROFS;
-    }
-  }
-
-  // write the new entry. when object_size <= offset we fall through to here
-  // and update the object as a blind write since the target offset falls past
-  // the end of the object.
-
-  entry_header hdr;
-  hdr.set_invalid(false);
-  hdr.set_position(op.pos());
-  hdr.set_size(op.data().size());
-
+  // zero pad?
   ceph::bufferlist data;
-  hdr.encode(data);
   data.append(op.data());
 
   ret = cls_cxx_write(hctx, offset, data.length(), &data);
   if (ret < 0) {
     CLS_ERR("ERROR: write(): failed to write entry: %d", ret);
+    return ret;
+  }
+
+  const size_t size = written.getSizeInBytes();
+  char buf[size];
+  written.write(buf, false);
+  header.set_written(buf, size);
+
+  if (!header.has_max_pos() || (op.pos() > header.max_pos())) {
+    header.set_max_pos(op.pos());
+  }
+
+  ret = entry_write_header(hctx, header);
+  if (ret < 0) {
+    CLS_ERR("ERROR: write(): failed to write header %d", ret);
     return ret;
   }
 
@@ -416,61 +390,52 @@ static int entry_invalidate(cls_method_context_t hctx, ceph::bufferlist *in,
   } else {
     header.set_stride(op.stride());
     header.set_max_size(op.max_size());
-    ret = entry_write_header(hctx, header);
-    if (ret < 0) {
-      CLS_ERR("ERROR: invalidate(): failed to write header %d", ret);
-      return ret;
-    }
   }
+
+  if (!header.has_written() || !header.has_invalid()) {
+    return -EIO;
+  }
+
+  auto written = Roaring::read(header.written().c_str(), false);
+  auto invalid = Roaring::read(header.invalid().c_str(), false);
 
   const uint32_t index = op.pos() / header.stride();
-  const uint32_t slot_size = sizeof(entry_header) + header.max_size();
-  const uint32_t offset = index * slot_size;
 
-  uint64_t object_size;
-  ret = get_object_size(hctx, &object_size);
-  if (ret < 0) {
-    CLS_ERR("ERROR: invalidate(): get object size failed: %d", ret);
-    return ret;
+  if (written.contains(index)) {
+    if (invalid.contains(index)) {
+      CLS_LOG(10, "invalidate(): entry already invalidated");
+      return 0;
+    }
+    if (!op.force()) {
+      CLS_LOG(10, "invalidate(): entry position non-empty");
+      return -EROFS;
+    }
   }
 
-  entry_header hdr;
-  if (offset < object_size) {
-    ceph::bufferlist bl;
-    ret = cls_cxx_read(hctx, offset, sizeof(entry_header), &bl);
-    if (ret < 0) {
-      CLS_ERR("ERROR: invalidate(): failed to read entry header %d", ret);
-      return ret;
-    }
+  written.add(index);
+  invalid.add(index);
 
-    if (!hdr.decode(bl)) {
-      CLS_ERR("ERROR: invalidate(): read incomplete entry header");
-      return -EIO;
-    }
-
-    if (hdr.exists()) {
-      if (hdr.invalid()) {
-        // already invalid
-        return 0;
-      }
-      if (!op.force()) {
-        CLS_LOG(10, "invalidate(): entry position non-empty");
-        return -EROFS;
-      }
-    }
-
-    // falling through maintains entry size
+  {
+    const size_t size = written.getSizeInBytes();
+    char buf[size];
+    written.write(buf, false);
+    header.set_written(buf, size);
   }
 
-  hdr.set_invalid(true);
-  hdr.set_position(op.pos());
+  {
+    const size_t size = invalid.getSizeInBytes();
+    char buf[size];
+    invalid.write(buf, false);
+    header.set_invalid(buf, size);
+  }
 
-  ceph::bufferlist data;
-  hdr.encode(data);
+  if (!header.has_max_pos() || (op.pos() > header.max_pos())) {
+    header.set_max_pos(op.pos());
+  }
 
-  cls_cxx_write(hctx, offset, data.length(), &data);
+  ret = entry_write_header(hctx, header);
   if (ret < 0) {
-    CLS_ERR("ERROR: invalidate(): failed to write entry header: %d", ret);
+    CLS_ERR("ERROR: invalidate(): failed to write header %d", ret);
     return ret;
   }
 
@@ -539,42 +504,9 @@ static int entry_max_position(cls_method_context_t hctx, ceph::bufferlist *in,
     return -EIO;
   }
 
-  uint64_t object_size;
-  ret = get_object_size(hctx, &object_size);
-  if (ret < 0) {
-    CLS_ERR("ERROR: max_position(): get object size failed: %d", ret);
-    return ret;
-  }
-
   zlog_ceph_proto::MaxPos reply;
-  if (object_size > 0) {
-    if (!header.has_stride() || !header.has_max_size()) {
-      CLS_ERR("ERROR: write(): unexpected header state");
-      return -EIO;
-    }
-
-    const uint32_t slot_size = sizeof(entry_header) + header.max_size();
-    uint64_t offset = (object_size - 1) - ((object_size - 1) % slot_size);
-
-    ceph::bufferlist bl;
-    ret = cls_cxx_read(hctx, offset, sizeof(entry_header), &bl);
-    if (ret < 0) {
-      CLS_ERR("ERROR: max_position(): failed to read entry header %d", ret);
-      return ret;
-    }
-
-    entry_header hdr;
-    if (!hdr.decode(bl)) {
-      CLS_ERR("ERROR: max_position(): read incomplete entry header");
-      return -EIO;
-    }
-
-    if (!hdr.exists()) {
-      CLS_ERR("ERROR: max_position(): invalid object state");
-      return -EIO;
-    }
-
-    reply.set_pos(hdr.position());
+  if (header.has_max_pos()) {
+    reply.set_pos(header.max_pos());
   }
 
   encode(*out, reply);

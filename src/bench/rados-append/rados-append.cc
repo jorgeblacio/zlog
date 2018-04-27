@@ -178,6 +178,7 @@ static void reporter(const std::string prefix)
 enum Store {
   OMAP,
   APPEND,
+  XATTR,
 };
 
 int main(int argc, char **argv)
@@ -236,6 +237,9 @@ int main(int argc, char **argv)
   } else if (store_name == "append") {
     prefix = prefix + ".append";
     store = APPEND;
+  } else if (store_name == "xattr") {
+    prefix = prefix + ".xattr";
+    store = XATTR;
   } else {
     std::cerr << "invalid store" << std::endl;
     exit(1);
@@ -341,6 +345,18 @@ int main(int argc, char **argv)
         int ret = ioctx.aio_append(oid, io->c, bl, bl.length());
         if (ret) {
           std::cerr << "aio append failed " << ret << std::endl;
+          exit(1);
+        }
+      }
+      break;
+
+      case XATTR:
+      {
+        auto key = u64tostr(pos);
+        io->start_us = getus();
+        int ret = ioctx.aio_setxattr(oid, io->c, key.c_str(), bl);
+        if (ret) {
+          std::cerr << "aio setxattr failed " << ret << std::endl;
           exit(1);
         }
       }

@@ -179,6 +179,9 @@ enum Store {
   OMAP,
   APPEND,
   XATTR,
+  OMAP_APPEND,
+  OMAP_FIXED_APPEND,
+  XATTR_FIXED_APPEND,
 };
 
 int main(int argc, char **argv)
@@ -192,6 +195,7 @@ int main(int argc, char **argv)
   double max_gbs;
   size_t entries_per_object;
   std::string store_name;
+  size_t md_size;
 
   po::options_description opts("Benchmark options");
   opts.add_options()
@@ -206,6 +210,7 @@ int main(int argc, char **argv)
     ("qdepth,q", po::value<int>(&qdepth)->default_value(1), "aio queue depth")
     ("prefix", po::value<std::string>(&prefix)->default_value(""), "name prefix")
     ("max_gbs", po::value<double>(&max_gbs)->default_value(0.0), "max gbs to write")
+    ("md_size", po::value<size_t>(&md_size)->default_value(50), "fixed md size")
   ;
 
   po::variables_map vm;
@@ -240,6 +245,15 @@ int main(int argc, char **argv)
   } else if (store_name == "xattr") {
     prefix = prefix + ".xattr";
     store = XATTR;
+  } else if (store_name == "omap_append") {
+    prefix = prefix + ".omap_append";
+    store = OMAP_APPEND;
+  } else if (store_name == "omap_fixed_append") {
+    prefix = prefix + ".omap_fixed_append";
+    store = OMAP_FIXED_APPEND;
+  } else if (store_name == "xattr_fixed_append") {
+    prefix = prefix + ".xattr_fixed_append";
+    store = XATTR_FIXED_APPEND;
   } else {
     std::cerr << "invalid store" << std::endl;
     exit(1);
@@ -266,7 +280,7 @@ int main(int argc, char **argv)
   signal(SIGALRM, sig_handler);
   alarm(runtime);
 
-  rand_data_gen dgen(1ULL << 22, entry_size);
+  rand_data_gen dgen(1ULL << 22, std::max(md_size, entry_size));
   dgen.generate();
 
   hdr_init(1,
@@ -308,6 +322,9 @@ int main(int argc, char **argv)
     ceph::bufferlist bl;
     bl.append(data, entry_size);
 
+    ceph::bufferlist md_bl;
+    md_bl.append(data, md_size);
+
     aio_state *io = new aio_state;
     io->c = librados::Rados::aio_create_completion(io, NULL, handle_aio_append_cb);
 
@@ -345,6 +362,71 @@ int main(int argc, char **argv)
         int ret = ioctx.aio_append(oid, io->c, bl, bl.length());
         if (ret) {
           std::cerr << "aio append failed " << ret << std::endl;
+          exit(1);
+        }
+      }
+      break;
+
+      case OMAP_APPEND:
+      {
+        librados::ObjectWriteOperation op;
+
+        // entry
+        op.append(bl);
+
+        // metadata. simulated (32 bit offset and length)
+        // actual value doesn't matter
+        ceph::bufferlist pos_bl;
+        pos_bl.append((char*)&pos, sizeof(pos));
+        auto key = u64tostr(pos);
+        std::map<std::string, ceph::bufferlist> kvs;
+        kvs.emplace(key, pos_bl);
+        op.omap_set(kvs);
+
+        io->start_us = getus();
+        int ret = ioctx.aio_operate(oid, io->c, &op);
+        if (ret) {
+          std::cerr << "aio operate (omap+append) failed " << ret << std::endl;
+          exit(1);
+        }
+      }
+      break;
+
+      case OMAP_FIXED_APPEND:
+      {
+        librados::ObjectWriteOperation op;
+
+        // entry
+        op.append(bl);
+
+        // metadata (simulated bitmap)
+        std::map<std::string, ceph::bufferlist> kvs;
+        kvs.emplace("index", md_bl);
+        op.omap_set(kvs);
+
+        io->start_us = getus();
+        int ret = ioctx.aio_operate(oid, io->c, &op);
+        if (ret) {
+          std::cerr << "aio operate (omap+fixed+append) failed " << ret << std::endl;
+          exit(1);
+        }
+      }
+      break;
+
+      case XATTR_FIXED_APPEND:
+      {
+        librados::ObjectWriteOperation op;
+
+        // entry
+        op.append(bl);
+
+        // metadata (simulated bitmap)
+        op.setxattr("index", md_bl);
+
+        io->start_us = getus();
+        int ret = ioctx.aio_operate(oid, io->c, &op);
+        if (ret) {
+          std::cerr << "aio operate (xattr+fixed+append) failed " << ret << std::endl;
           exit(1);
         }
       }

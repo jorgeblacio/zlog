@@ -277,7 +277,7 @@ int main(int argc, char **argv)
   // pre-generate the object names for 200 stripes. mostly to avoid doing this
   // on demand in the dispatch loop. this is sufficient for our experiments.
   std::vector<std::vector<std::string>> oids;
-  for (int i = 0; i < 200; i++) {
+  for (int i = 0; i < 500; i++) {
     std::vector<std::string> stripe_oids;
     for (int j = 0; j < width; j++) {
       std::stringstream oid;
@@ -309,11 +309,17 @@ int main(int argc, char **argv)
 
     size_t obj_idx = pos % width;
 
+    size_t stripe = pos / entries_per_stripe;
+    if (stripe >= oids.size()) {
+      std::cerr << "increase the number of stripes" << std::endl;
+      exit(1);
+    }
+
+    auto oid = oids[stripe][obj_idx];
+
     switch (store) {
       case OMAP:
       {
-        auto oid = oids[0][obj_idx];
-
         librados::ObjectWriteOperation op;
         auto key = u64tostr(pos);
         std::map<std::string, ceph::bufferlist> kvs;
@@ -331,14 +337,6 @@ int main(int argc, char **argv)
 
       case APPEND:
       {
-        size_t stripe = pos / entries_per_stripe;
-        if (stripe >= oids.size()) {
-          std::cerr << "increase the number of stripes" << std::endl;
-          exit(1);
-        }
-
-        auto oid = oids[stripe][obj_idx];
-
         io->start_us = getus();
         int ret = ioctx.aio_append(oid, io->c, bl, bl.length());
         if (ret) {

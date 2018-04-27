@@ -175,6 +175,11 @@ static void reporter(const std::string prefix)
       stdout, 1, 1.0, CLASSIC);
 }
 
+enum Store {
+  OMAP,
+  APPEND,
+};
+
 int main(int argc, char **argv)
 {
   std::string pool;
@@ -185,14 +190,14 @@ int main(int argc, char **argv)
   std::string prefix;
   double max_gbs;
   size_t entries_per_object;
-  bool omap;
+  std::string store_name;
 
   po::options_description opts("Benchmark options");
   opts.add_options()
     ("help,h", "show help message")
     ("logname,l", po::value<std::string>(&logname)->default_value(""), "Log name")
     ("runtime,r", po::value<int>(&runtime)->default_value(0), "runtime")
-    ("omap", po::bool_switch(&omap)->default_value(false), "use omap")
+    ("store", po::value<std::string>(&store_name)->default_value("append"), "storage")
     ("pool,p", po::value<std::string>(&pool)->required(), "Pool name")
     ("width,w", po::value<int>(&width)->default_value(10), "stripe width")
     ("size,s", po::value<size_t>(&entry_size)->default_value(1024), "entry size")
@@ -224,10 +229,16 @@ int main(int argc, char **argv)
     logname = ss.str();
   }
 
-  if (omap) {
+  Store store;
+  if (store_name == "omap") {
     prefix = prefix + ".omap";
-  } else {
+    store = OMAP;
+  } else if (store_name == "append") {
     prefix = prefix + ".append";
+    store = APPEND;
+  } else {
+    std::cerr << "invalid store" << std::endl;
+    exit(1);
   }
 
   if (runtime == 0 && max_gbs == 0.0) {
@@ -298,36 +309,48 @@ int main(int argc, char **argv)
 
     size_t obj_idx = pos % width;
 
-    if (omap) {
-      auto oid = oids[0][obj_idx];
+    switch (store) {
+      case OMAP:
+      {
+        auto oid = oids[0][obj_idx];
 
-      librados::ObjectWriteOperation op;
-      auto key = u64tostr(pos);
-      std::map<std::string, ceph::bufferlist> kvs;
-      kvs.emplace(key, bl);
-      op.omap_set(kvs);
+        librados::ObjectWriteOperation op;
+        auto key = u64tostr(pos);
+        std::map<std::string, ceph::bufferlist> kvs;
+        kvs.emplace(key, bl);
+        op.omap_set(kvs);
 
-      io->start_us = getus();
-      int ret = ioctx.aio_operate(oid, io->c, &op);
-      if (ret) {
-        std::cerr << "aio operate failed " << ret << std::endl;
-        exit(1);
+        io->start_us = getus();
+        int ret = ioctx.aio_operate(oid, io->c, &op);
+        if (ret) {
+          std::cerr << "aio operate failed " << ret << std::endl;
+          exit(1);
+        }
       }
-    } else {
-      size_t stripe = pos / entries_per_stripe;
-      if (stripe >= oids.size()) {
-        std::cerr << "increase the number of stripes" << std::endl;
-        exit(1);
-      }
+      break;
 
-      auto oid = oids[stripe][obj_idx];
+      case APPEND:
+      {
+        size_t stripe = pos / entries_per_stripe;
+        if (stripe >= oids.size()) {
+          std::cerr << "increase the number of stripes" << std::endl;
+          exit(1);
+        }
 
-      io->start_us = getus();
-      int ret = ioctx.aio_append(oid, io->c, bl, bl.length());
-      if (ret) {
-        std::cerr << "aio append failed " << ret << std::endl;
-        exit(1);
+        auto oid = oids[stripe][obj_idx];
+
+        io->start_us = getus();
+        int ret = ioctx.aio_append(oid, io->c, bl, bl.length());
+        if (ret) {
+          std::cerr << "aio append failed " << ret << std::endl;
+          exit(1);
+        }
       }
+      break;
+
+      default:
+        std::cerr << "invalid store" << std::endl;
+        exit(1);
     }
 
     pos++;

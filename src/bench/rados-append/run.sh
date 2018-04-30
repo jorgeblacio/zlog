@@ -1,18 +1,21 @@
 #!/bin/bash
-#set -x
+set -x
 set -e
 
-sizes="1 2 4"
-max_xattr_size=2
+sizes="1 128 4096 4097 262144 262145"
+max_xattr_size=128
 stores="omap append xattr omap_append omap_fixed_append xattr_fixed_append"
 pool=zlog
 max_gbs=64
 width=32
 qdepth=16
-runtime=10
+runtime=300
 clean_secs=120
 target_objsize=16777216
 md_size=40
+
+rados purge ${pool} --yes-i-really-really-mean-it
+sleep ${clean_secs}
 
 for size in $sizes; do
   for store in $stores; do
@@ -34,8 +37,8 @@ for size in $sizes; do
       --max_gbs ${max_gbs} --epo ${epo} --prefix ${prefix} \
       --store ${store} --md_size ${md_size}
 
-  #rados purge zlog --yes-i-really-really-mean-it
-  #sleep ${clean_secs}
+  rados purge ${pool} --yes-i-really-really-mean-it
+  sleep ${clean_secs}
 
 done
 done

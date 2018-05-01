@@ -56,6 +56,7 @@ class rand_data_gen {
 struct aio_state {
   librados::AioCompletion *c;
   uint64_t start_us;
+  int omap_cmp_r = 0;
 };
 
 static size_t entry_size;
@@ -104,6 +105,13 @@ static void handle_aio_append_cb(librados::completion_t cb, void *arg)
   ops_done.fetch_add(1);
 
   sem_post(&sem);
+
+  if (io->omap_cmp_r != 0) {
+    std::cout << "error: omap cmp r = " << std::endl;
+    stop = 1;
+    assert(0);
+    exit(1);
+  }
 
   if (io->c->get_return_value()) {
     std::cout << "error: io retval = "
@@ -180,8 +188,10 @@ enum Store {
   APPEND,
   XATTR,
   OMAP_APPEND,
+  OMAP_APPEND_RMW,
   OMAP_FIXED_APPEND,
   XATTR_FIXED_APPEND,
+  XATTR_FIXED_APPEND_RMW,
 };
 
 int main(int argc, char **argv)
@@ -248,12 +258,18 @@ int main(int argc, char **argv)
   } else if (store_name == "omap_append") {
     prefix = prefix + ".omap_append";
     store = OMAP_APPEND;
+  } else if (store_name == "omap_append_rmw") {
+    prefix = prefix + ".omap_append_rmw";
+    store = OMAP_APPEND_RMW;
   } else if (store_name == "omap_fixed_append") {
     prefix = prefix + ".omap_fixed_append";
     store = OMAP_FIXED_APPEND;
   } else if (store_name == "xattr_fixed_append") {
     prefix = prefix + ".xattr_fixed_append";
     store = XATTR_FIXED_APPEND;
+  } else if (store_name == "xattr_fixed_append_rmw") {
+    prefix = prefix + ".xattr_fixed_append_rmw";
+    store = XATTR_FIXED_APPEND_RMW;
   } else {
     std::cerr << "invalid store" << std::endl;
     exit(1);
@@ -287,10 +303,7 @@ int main(int argc, char **argv)
       INT64_C(30000000),
       3, &histogram);
 
-  ops_done = 0;
-  std::thread reporter_thread(reporter, prefix);
-
-  sem_init(&sem, 0, qdepth);
+  std::vector<librados::AioCompletion*> creates;
 
   // pre-generate the object names for 200 stripes. mostly to avoid doing this
   // on demand in the dispatch loop. this is sufficient for our experiments.
@@ -301,9 +314,32 @@ int main(int argc, char **argv)
       std::stringstream oid;
       oid << logname << "." << i << "." << j;
       stripe_oids.push_back(oid.str());
+
+      // create the object. this is useful because we use cmpxattr assertion to
+      // simulate a rmw cycle. without the object existing, the assertion errors
+      // out with enoent.
+      librados::ObjectWriteOperation op;
+      op.create(true);
+      auto c = librados::Rados::aio_create_completion();
+      int ret = ioctx.aio_operate(oid.str(), c, &op);
+      if (ret) {
+        std::cerr << "failed create" << std::endl;
+        exit(1);
+      }
     }
     oids.emplace_back(stripe_oids);
   }
+
+  for (auto c : creates) {
+    c->wait_for_safe();
+    c->release();
+  }
+  creates.clear();
+  sleep(2);
+
+  ops_done = 0;
+  std::thread reporter_thread(reporter, prefix);
+  sem_init(&sem, 0, qdepth);
 
   const size_t entries_per_stripe = width * entries_per_object;
   uint64_t pos = 0;
@@ -392,6 +428,39 @@ int main(int argc, char **argv)
       }
       break;
 
+      case OMAP_APPEND_RMW:
+      {
+        librados::ObjectWriteOperation op;
+        auto key = u64tostr(pos);
+
+        // simulate rmw. if the key doesn't exist, then its treated like an
+        // empty value. since we are always checking a new position that hasn't
+        // been written yet in these experiments. then it should work fine.
+        ceph::bufferlist cmp_bl;
+        std::map<std::string, std::pair<ceph::bufferlist, int>> assertions;
+        assertions[key] = std::make_pair(cmp_bl, LIBRADOS_CMPXATTR_OP_EQ);
+        op.omap_cmp(assertions, &io->omap_cmp_r);
+
+        // entry
+        op.append(bl);
+
+        // metadata. simulated (32 bit offset and length)
+        // actual value doesn't matter
+        ceph::bufferlist pos_bl;
+        pos_bl.append((char*)&pos, sizeof(pos));
+        std::map<std::string, ceph::bufferlist> kvs;
+        kvs.emplace(key, pos_bl);
+        op.omap_set(kvs);
+
+        io->start_us = getus();
+        int ret = ioctx.aio_operate(oid, io->c, &op);
+        if (ret) {
+          std::cerr << "aio operate (omap+append) failed " << ret << std::endl;
+          exit(1);
+        }
+      }
+      break;
+
       case OMAP_FIXED_APPEND:
       {
         librados::ObjectWriteOperation op;
@@ -421,6 +490,33 @@ int main(int argc, char **argv)
         op.append(bl);
 
         // metadata (simulated bitmap)
+        op.setxattr("index", md_bl);
+
+        io->start_us = getus();
+        int ret = ioctx.aio_operate(oid, io->c, &op);
+        if (ret) {
+          std::cerr << "aio operate (xattr+fixed+append) failed " << ret << std::endl;
+          exit(1);
+        }
+      }
+      break;
+
+      case XATTR_FIXED_APPEND_RMW:
+      {
+        librados::ObjectWriteOperation op;
+
+        // internally this will read the xattr and compare it to the zero byte.
+        // this is used to simulate the read side of rmw. initially its empty,
+        // so NE passes, then we set it to something non-zero so the test
+        // continues to pass.
+        ceph::bufferlist cmp_val;
+        cmp_val.append(0);
+        op.cmpxattr("index", LIBRADOS_CMPXATTR_OP_NE, cmp_val);
+
+        // entry
+        op.append(bl);
+
+        // metadata (simulated bitmap) after simulated update
         op.setxattr("index", md_bl);
 
         io->start_us = getus();

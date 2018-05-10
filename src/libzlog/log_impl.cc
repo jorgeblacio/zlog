@@ -17,6 +17,7 @@
 #include "proto/zlog.pb.h"
 #include "include/zlog/log.h"
 #include "include/zlog/backend.h"
+#include "include/zlog/cache.h"
 
 #include "fakeseqr.h"
 #include "striper.h"
@@ -481,6 +482,10 @@ int LogImpl::CheckTail(const std::set<uint64_t>& stream_ids,
 
 int LogImpl::Read(uint64_t position, std::string *data)
 {
+
+  int cache_miss = cache->get(&position, data);
+  if(!cache_miss) return 0;
+
   while (true) {
     auto mapping = striper.MapPosition(position);
     if (!mapping) {
@@ -557,8 +562,13 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
     ret = backend->Write(mapping->oid, data, mapping->epoch, position,
         mapping->width, mapping->max_size);
     if (!ret) {
-      if (pposition)
+      if (pposition){
         *pposition = position;
+      }
+
+      std::string cache_str = data.ToString(); //FIX THIS
+      cache->put(pposition, &cache_str);
+
       return 0;
     }
 

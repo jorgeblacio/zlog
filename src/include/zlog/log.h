@@ -6,6 +6,7 @@
 #include <string>
 #include "slice.h"
 #include "options.h"
+#include "cache.h"
 
 namespace zlog {
 
@@ -84,10 +85,15 @@ class Log {
   static int OpenWithBackend(const Options& options,
       std::shared_ptr<Backend> backend,
       const std::string& name, Log **logptr);
+  
+ protected:
+  Cache* cache;
+
 
  private:
   Log(const Log&);
   void operator=(const Log&);
+
 };
 
 }

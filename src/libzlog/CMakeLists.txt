@@ -6,6 +6,7 @@ set(libzlog_sources
   capi.cc
   log.cc
   backend.cc
+  cache.cc
   ../port/stack_trace.cc)
 
 add_definitions("-DZLOG_LIBDIR=\"${CMAKE_INSTALL_FULL_LIBDIR}\"")

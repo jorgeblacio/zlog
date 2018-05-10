@@ -83,3 +83,5 @@ zlog.spec
 sa_results
 
 bin
+.vscode/settings.json
+.vscode/c_cpp_properties.json

@@ -5,7 +5,7 @@
 
 namespace zlog{
 
-    class LRU: public Eviction {
+    class LRU: public Eviction{
 
 
         public:

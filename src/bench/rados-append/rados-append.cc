@@ -21,6 +21,10 @@
 
 namespace po = boost::program_options;
 
+// this guards a hack that has nothing to do with the append benchmark. it can
+// be deleted later, but there is just an emergency benchmark :)
+#define SEQ_HACK 1
+
 class rand_data_gen {
  public:
   rand_data_gen(size_t buf_size, size_t samp_size) :
@@ -57,6 +61,9 @@ struct aio_state {
   librados::AioCompletion *c;
   uint64_t start_us;
   int omap_cmp_r = 0;
+#ifdef SEQ_HACK
+  uint64_t osize = 0;
+#endif
 };
 
 static size_t entry_size;
@@ -120,6 +127,15 @@ static void handle_aio_append_cb(librados::completion_t cb, void *arg)
     stop = 1;
     exit(1);
   }
+
+#ifdef SEQ_HACK
+  if (io->osize != 0) {
+    std::cout << "error: seq hack broken" << std::endl;
+    assert(0);
+    stop = 1;
+    exit(1);
+  }
+#endif
 
   io->c->release();
   delete io;
@@ -192,6 +208,10 @@ enum Store {
   OMAP_FIXED_APPEND,
   XATTR_FIXED_APPEND,
   XATTR_FIXED_APPEND_RMW,
+#ifdef SEQ_HACK
+  PSEQ,
+  VSEQ,
+#endif
 };
 
 int main(int argc, char **argv)
@@ -245,6 +265,8 @@ int main(int argc, char **argv)
     logname = ss.str();
   }
 
+  int nstripes = 500;
+
   Store store;
   if (store_name == "omap") {
     prefix = prefix + ".omap";
@@ -270,6 +292,18 @@ int main(int argc, char **argv)
   } else if (store_name == "xattr_fixed_append_rmw") {
     prefix = prefix + ".xattr_fixed_append_rmw";
     store = XATTR_FIXED_APPEND_RMW;
+#ifdef SEQ_HACK
+  } else if (store_name == "pseq") {
+    prefix = prefix + ".pseq";
+    store = PSEQ;
+    width = 1;
+    nstripes = 1;
+  } else if (store_name == "vseq") {
+    prefix = prefix + ".vseq";
+    store = VSEQ;
+    width = 1;
+    nstripes = 1;
+#endif
   } else {
     std::cerr << "invalid store" << std::endl;
     exit(1);
@@ -308,7 +342,7 @@ int main(int argc, char **argv)
   // pre-generate the object names for 200 stripes. mostly to avoid doing this
   // on demand in the dispatch loop. this is sufficient for our experiments.
   std::vector<std::vector<std::string>> oids;
-  for (int i = 0; i < 500; i++) {
+  for (int i = 0; i < nstripes; i++) {
     std::vector<std::string> stripe_oids;
     for (int j = 0; j < width; j++) {
       std::stringstream oid;
@@ -319,7 +353,13 @@ int main(int argc, char **argv)
       // simulate a rmw cycle. without the object existing, the assertion errors
       // out with enoent.
       librados::ObjectWriteOperation op;
+#ifdef SEQ_HACK
+      // basically cause we want to be able to use the same object names across
+      // invocations of the benchmark..
+      op.create(false);
+#else
       op.create(true);
+#endif
       auto c = librados::Rados::aio_create_completion();
       int ret = ioctx.aio_operate(oid.str(), c, &op);
       if (ret) {
@@ -354,15 +394,40 @@ int main(int argc, char **argv)
       break;
     }
 
+
+#ifdef SEQ_HACK
+    switch (store) {
+      case PSEQ:
+        break;
+
+      case VSEQ:
+        {
+          // aio reads seem to want the complete callback...
+          aio_state *io = new aio_state;
+          io->c = librados::Rados::aio_create_completion(io, handle_aio_append_cb, NULL);
+          io->start_us = getus();
+          int ret = ioctx.aio_stat(oids[0][0], io->c, &io->osize, NULL);
+          if (ret) {
+            std::cerr << "aio stat failed " << ret << std::endl;
+            exit(1);
+          }
+          continue;
+        }
+
+      default:
+        break;
+    }
+#endif
+
+    aio_state *io = new aio_state;
+    io->c = librados::Rados::aio_create_completion(io, NULL, handle_aio_append_cb);
+
     auto data = dgen.sample();
     ceph::bufferlist bl;
     bl.append(data, entry_size);
 
     ceph::bufferlist md_bl;
     md_bl.append(data, md_size);
-
-    aio_state *io = new aio_state;
-    io->c = librados::Rados::aio_create_completion(io, NULL, handle_aio_append_cb);
 
     size_t obj_idx = pos % width;
 

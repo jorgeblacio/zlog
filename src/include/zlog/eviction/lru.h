@@ -1,6 +1,7 @@
 #pragma once
 #include<string>
-#include<forward_list>
+#include<list>
+#include<unordered_map>
 #include"zlog/eviction.h"
 
 namespace zlog{
@@ -18,6 +19,7 @@ namespace zlog{
             uint64_t get_evicted() override;
 
         private:
-            std::forward_list<uint64_t> eviction_list;
+            std::unordered_map<uint64_t, std::list<uint64_t>::iterator> eviction_hash_map;
+            std::list<uint64_t> eviction_list;
     };
 }

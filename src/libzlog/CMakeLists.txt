@@ -7,6 +7,7 @@ set(libzlog_sources
   log.cc
   backend.cc
   cache.cc
+  ../eviction/lru.cc
   ../port/stack_trace.cc
   ../port/port_posix.cc
   ../util/random.cc

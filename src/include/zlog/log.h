@@ -6,7 +6,6 @@
 #include <string>
 #include "slice.h"
 #include "options.h"
-#include "cache.h"
 
 namespace zlog {
 
@@ -86,8 +85,6 @@ class Log {
       std::shared_ptr<Backend> backend,
       const std::string& name, Log **logptr);
   
- protected:
-  Cache* cache;
 
 
  private:

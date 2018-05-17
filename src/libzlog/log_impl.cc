@@ -482,7 +482,6 @@ int LogImpl::CheckTail(const std::set<uint64_t>& stream_ids,
 
 int LogImpl::Read(uint64_t position, std::string *data)
 {
-
   int cache_miss = cache->get(&position, data);
   if(!cache_miss) return 0;
 
@@ -496,8 +495,13 @@ int LogImpl::Read(uint64_t position, std::string *data)
     }
     int ret = backend->Read(mapping->oid, mapping->epoch, position,
         mapping->width, mapping->max_size, data);
-    if (!ret)
+
+    if (!ret){
+      std::string data_copy(*data); //make a copy
+      cache->put(&position, &data_copy);
       return 0;
+    }
+
     if (ret == -ESPIPE) {
       ret = UpdateView();
       if (ret)
@@ -566,7 +570,7 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
         *pposition = position;
       }
 
-      std::string cache_str = data.ToString(); //FIX THIS
+      std::string cache_str = data.ToString(); //ToString() is a copy
       cache->put(pposition, &cache_str);
 
       return 0;

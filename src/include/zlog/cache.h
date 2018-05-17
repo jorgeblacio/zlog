@@ -11,6 +11,8 @@ class Cache{
     public:
         Cache(const zlog::Options& ops) : options(ops){
 
+            current_cache_use = 0;
+
             switch(options.eviction){
                 case zlog::Eviction::Eviction_Policy::LRU:
                     eviction = new LRU();
@@ -20,7 +22,6 @@ class Cache{
                 break;
             }
 
-            size = options.cache_size;
         }
         ~Cache();
 
@@ -29,9 +30,8 @@ class Cache{
 
     private:
         zlog::Eviction* eviction;
-        uint64_t size;
         std::unordered_map<uint64_t, std::string> cache_map;
         const zlog::Options& options;
-        
+        int64_t current_cache_use;
 };
 }

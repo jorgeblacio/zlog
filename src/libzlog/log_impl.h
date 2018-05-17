@@ -6,6 +6,7 @@
 #include "include/zlog/log.h"
 #include "libseq/libseqr.h"
 #include "include/zlog/backend.h"
+#include "include/zlog/cache.h"
 #include "striper.h"
 
 #define DEFAULT_STRIPE_SIZE 100
@@ -131,6 +132,8 @@ class LogImpl : public Log {
   std::condition_variable view_update;
   std::list<std::pair<std::condition_variable*, bool*>> view_update_waiters;
   std::thread view_update_thread;
+
+  Cache* cache;
 };
 
 }

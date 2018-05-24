@@ -2,9 +2,10 @@
 #include<string>
 #include<iostream>
 #include<unordered_map>
-//#include"zlog/eviction.h"
 #include"zlog/eviction/lru.h"
+#include"zlog/eviction/arc.h"
 #include"zlog/options.h"
+#include"zlog/string_pool.h"
 
 namespace zlog{
 class Cache{
@@ -15,7 +16,10 @@ class Cache{
 
             switch(options.eviction){
                 case zlog::Eviction::Eviction_Policy::LRU:
-                    eviction = new LRU();
+                    eviction = new LRU(options.cache_size, this);
+                break;
+                case zlog::Eviction::Eviction_Policy::ARC:
+                    eviction = new ARC(options.cache_size, this);
                 break;
                 default:
                     std::cout << "Eviction policy not implemented" << std::endl;   
@@ -25,12 +29,15 @@ class Cache{
         }
         ~Cache();
 
-        int put(uint64_t* pos, std::string* data);
+        int put(uint64_t* pos, const char* data);
         int get(uint64_t* pos, std::string* data);
+
+        std::unordered_map<uint64_t, StringPool::String> cache_map; //FIX
+       
 
     private:
         zlog::Eviction* eviction;
-        std::unordered_map<uint64_t, std::string> cache_map;
+        StringPool::Allocator pool_alloc;
         const zlog::Options& options;
         int64_t current_cache_use;
 };

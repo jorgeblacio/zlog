@@ -8,7 +8,14 @@ set(libzlog_sources
   backend.cc
   cache.cc
   ../eviction/lru.cc
-  ../port/stack_trace.cc)
+  ../eviction/arc.cc
+  ../port/stack_trace.cc
+  ../port/port_posix.cc
+  ../util/random.cc
+  ../util/thread_local.cc
+  ../stats/statistics.cc
+  ../stats/histogram.cc
+  )
 
 add_definitions("-DZLOG_LIBDIR=\"${CMAKE_INSTALL_FULL_LIBDIR}\"")
 add_definitions("-DCMAKE_SHARED_LIBRARY_SUFFIX=\"${CMAKE_SHARED_LIBRARY_SUFFIX}\"")

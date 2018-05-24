@@ -7,6 +7,10 @@ install(FILES
     zlog/options.h
     zlog/cache.h
     zlog/eviction.h
+    zlog/string_pool.h
+    zlog/monitoring/statistics.h
+    zlog/monitoring/histogram.h
+    zlog/stats/statistics.h
     DESTINATION include/zlog
 )
 
@@ -26,7 +30,8 @@ install(FILES
 )
 
 set(eviction_hdrs
-  zlog/eviction/lru.h)
+  zlog/eviction/lru.h
+  zlog/eviction/arc.h)
 install(FILES
   ${eviction_hdrs}
   DESTINATION include/zlog/eviction

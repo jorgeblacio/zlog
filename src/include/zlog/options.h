@@ -1,5 +1,6 @@
 #pragma once
 #include "eviction.h"
+#include "zlog/monitoring/statistics.h"
 
 namespace zlog {
 
@@ -20,6 +21,8 @@ struct Options {
   //cache options
   zlog::Eviction::Eviction_Policy eviction = zlog::Eviction::Eviction_Policy::LRU;
   size_t cache_size = 1024 * 1024 * 1;
+
+  zlog::Statistics* statistics;
 };
 
 }

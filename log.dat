@@ -1,0 +1,4 @@
+0.623162 seconds.
+STATISTICS:
+zlog.cache.reqs COUNT : 100000
+zlog.cache.misses COUNT : 44988

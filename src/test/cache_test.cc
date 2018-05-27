@@ -6,7 +6,7 @@
 #include <ratio>
 #include"zlog/log.h"
 
-const int TEST_SIZE = 100000;
+const int TEST_SIZE = 1000000;
 
 int main(int argc, char** argv){
 

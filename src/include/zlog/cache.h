@@ -2,10 +2,11 @@
 #include<string>
 #include<iostream>
 #include<unordered_map>
+#include<mutex>
 #include"zlog/eviction/lru.h"
 #include"zlog/eviction/arc.h"
 #include"zlog/options.h"
-#include"zlog/string_pool.h"
+#include"zlog/mempool/mempool.h"
 
 namespace zlog{
 class Cache{
@@ -29,16 +30,16 @@ class Cache{
         }
         ~Cache();
 
-        int put(uint64_t* pos, const char* data);
+        int put(uint64_t* pos, std::string* data);
         int get(uint64_t* pos, std::string* data);
 
-        std::unordered_map<uint64_t, StringPool::String> cache_map; //FIX
+        std::unordered_map<uint64_t, mempool::cache::string> cache_map; //FIX
        
 
     private:
         zlog::Eviction* eviction;
-        StringPool::Allocator pool_alloc;
         const zlog::Options& options;
         int64_t current_cache_use;
+        std::mutex mut;
 };
 }

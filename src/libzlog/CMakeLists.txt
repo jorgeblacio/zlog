@@ -13,6 +13,7 @@ set(libzlog_sources
   ../port/port_posix.cc
   ../util/random.cc
   ../util/thread_local.cc
+  ../util/mempool.cc
   ../stats/statistics.cc
   ../stats/histogram.cc
   )

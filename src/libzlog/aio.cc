@@ -405,12 +405,19 @@ int LogImpl::AioAppend(AioCompletion *c, const Slice& data,
    */
   assert(ret == 0);
 
+  std::string data_str = data.ToString();
+  cache->put(pposition, &data_str);
+
   return ret;
 }
 
 int LogImpl::AioRead(uint64_t position, AioCompletion *c,
     std::string *datap)
 {
+
+  int cache_miss = cache->get(&position, datap);
+  if(!cache_miss) return 0;
+
   AioCompletionImplWrapper *wrapper =
     reinterpret_cast<AioCompletionImplWrapper*>(c);
   AioCompletionImpl *impl = wrapper->impl_;
@@ -440,6 +447,9 @@ int LogImpl::AioRead(uint64_t position, AioCompletion *c,
    * cleaned up correctly.
    */
   assert(ret == 0);
+
+  std::string data_str(*datap);
+  cache->put(&position, &data_str);
 
   return ret;
 }

@@ -7,7 +7,8 @@ install(FILES
     zlog/options.h
     zlog/cache.h
     zlog/eviction.h
-    zlog/string_pool.h
+    zlog/mempool/mempool.h
+    zlog/mempool/demangle.h
     zlog/monitoring/statistics.h
     zlog/monitoring/histogram.h
     zlog/stats/statistics.h

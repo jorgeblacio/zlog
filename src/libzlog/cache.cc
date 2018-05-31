@@ -7,7 +7,10 @@
 #include"include/zlog/cache.h"
 
 
-zlog::Cache::~Cache(){}
+zlog::Cache::~Cache(){
+    metrics_http_server_.removeHandler("/metrics");
+    metrics_http_server_.close();
+}
 
 int zlog::Cache::put(uint64_t* pos, std::string* data){
     if(options.cache_size > 0 && data->size() < options.cache_size && cache_map.find(*pos) == cache_map.end()){ 

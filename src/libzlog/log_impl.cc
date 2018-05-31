@@ -69,6 +69,8 @@ LogImpl::~LogImpl()
   }
   view_update.notify_one();
   view_update_thread.join();
+
+  delete cache;
 }
 
 int LogImpl::UpdateView()

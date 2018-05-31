@@ -4,7 +4,7 @@
 #include <chrono>
 #include <ctime>
 #include <ratio>
-#include <stdlib.h>
+#include <thread>
 #include"zlog/log.h"
 
 const int TEST_SIZE = 1000000;
@@ -74,9 +74,11 @@ int main(int argc, char** argv){
 
     //std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
    // for(int i = 0; i < TEST_SIZE; ++i){
-    while(true)
+    int i = 0;
+    while(true){
         ret = log->Read(test_vector[i], &output);
-        sleep(100);
+        i = (i + 1) % TEST_SIZE;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     //std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 

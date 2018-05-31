@@ -6,11 +6,11 @@
 #include <ratio>
 #include"zlog/log.h"
 
-const int TEST_SIZE = 10000000;
+const int TEST_SIZE = 100000;
 
 int main(int argc, char** argv){
 
-    if(argc < 2){
+    if(argc < 3){
         std::cout << "Specify cache size" << std::endl;
         std::cout << "Usage: ./cache_test CACHE_SIZE" << std::endl;        
         std::cout << "e.g: ./cache_test 2048" << std::endl; 
@@ -32,6 +32,19 @@ int main(int argc, char** argv){
         return -1;
     }
 
+    std::istringstream iss2( argv[2] );
+    int val2;
+
+    if (iss2 >> val2 && val2 >= 0){
+        options.eviction = (zlog::Eviction::Eviction_Policy)val2;
+    }else{
+        std::cout << "Invalid cache size" << std::endl;        
+        std::cout << "Usage: ./cache_test CACHE_SIZE" << std::endl;        
+        std::cout << "e.g: ./cache_test 2048" << std::endl;        
+        return -1;
+    }
+    auto stats = zlog::CreateCacheStatistics();
+    options.statistics = stats.get();
 
     zlog::Log *log;
     int ret = zlog::Log::Open(options, "lmdb", "mylog",
@@ -43,7 +56,9 @@ int main(int argc, char** argv){
 
     std::string output;
 
-    std::default_random_engine generator;
+    std::random_device r;
+
+    std::default_random_engine generator{r()};
     std::binomial_distribution<int> distribution(10000,0.5);
 
     std::vector<uint64_t> test_vector(TEST_SIZE);
@@ -65,6 +80,8 @@ int main(int argc, char** argv){
     
     std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
     std::cout << time_span.count() << " seconds." << std::endl;
+
+    std::cout << "STATISTICS:" << std::endl << stats->ToString(); 
 
     assert(ret == 0);
 

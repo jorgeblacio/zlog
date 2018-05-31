@@ -1,9 +1,10 @@
-#include<iostream>
-#include<sstream>
-#include<random>
-#include<chrono>
+#include <iostream>
+#include <sstream>
+#include <random>
+#include <chrono>
 #include <ctime>
 #include <ratio>
+#include <thread>
 #include"zlog/log.h"
 
 const int TEST_SIZE = 1000000;
@@ -71,15 +72,19 @@ int main(int argc, char** argv){
     }
 
 
-    std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-    for(int i = 0; i < TEST_SIZE; ++i){
+    //std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+   // for(int i = 0; i < TEST_SIZE; ++i){
+    int i = 0;
+    while(true){
         ret = log->Read(test_vector[i], &output);
+        i = (i + 1) % TEST_SIZE;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+    //std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
     
-    std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
-    std::cout << time_span.count() << " seconds." << std::endl;
+    //std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
+   // std::cout << time_span.count() << " seconds." << std::endl;
 
     std::cout << "STATISTICS:" << std::endl << stats->ToString(); 
 

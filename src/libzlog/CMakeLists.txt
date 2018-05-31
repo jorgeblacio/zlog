@@ -16,6 +16,8 @@ set(libzlog_sources
   ../util/mempool.cc
   ../stats/statistics.cc
   ../stats/histogram.cc
+  ../civetweb/src/civetweb.c
+  ../civetweb/src/CivetServer.cpp
   )
 
 add_definitions("-DZLOG_LIBDIR=\"${CMAKE_INSTALL_FULL_LIBDIR}\"")

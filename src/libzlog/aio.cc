@@ -405,16 +405,21 @@ int LogImpl::AioAppend(AioCompletion *c, const Slice& data,
    */
   assert(ret == 0);
 
+  cache->put(pposition, data);
+
   return ret;
 }
 
 int LogImpl::AioRead(uint64_t position, AioCompletion *c,
     std::string *datap)
 {
+
+
   AioCompletionImplWrapper *wrapper =
     reinterpret_cast<AioCompletionImplWrapper*>(c);
   AioCompletionImpl *impl = wrapper->impl_;
 
+  
   impl->log = this;
   impl->datap = datap;
   impl->position = position;
@@ -423,6 +428,13 @@ int LogImpl::AioRead(uint64_t position, AioCompletion *c,
 
   impl->get(); // backend now has a reference
 
+  int cache_miss = cache->get(&position, datap);
+  if(!cache_miss){
+    int ret = 0;
+    AioCompletionImpl::aio_safe_cb_read(impl, ret);
+    return ret;
+  }
+  
   auto mapping = striper.MapPosition(position);
   while (!mapping) {
     int ret = ExtendMap();
@@ -440,6 +452,8 @@ int LogImpl::AioRead(uint64_t position, AioCompletion *c,
    * cleaned up correctly.
    */
   assert(ret == 0);
+
+  cache->put(&position, Slice(*datap));
 
   return ret;
 }

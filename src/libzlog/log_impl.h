@@ -8,6 +8,7 @@
 #include "include/zlog/log.h"
 #include "libseq/libseqr.h"
 #include "include/zlog/backend.h"
+#include "include/zlog/cache.h"
 #include "striper.h"
 
 #define DEFAULT_STRIPE_SIZE 100
@@ -178,6 +179,7 @@ class LogImpl : public Log {
   const Options& options;
   CivetServer metrics_http_server_;
   MetricsHandler metrics_handler_;
+  Cache* cache;
 };
 
 }

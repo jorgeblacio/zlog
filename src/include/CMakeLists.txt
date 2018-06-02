@@ -5,6 +5,9 @@ install(FILES
     zlog/slice.h
     zlog/stream.h
     zlog/options.h
+
+    zlog/mempool/mempool.h
+    zlog/mempool/demangle.h
     zlog/monitoring/statistics.h
     zlog/monitoring/histogram.h
     zlog/stats/statistics.h

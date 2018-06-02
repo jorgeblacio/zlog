@@ -1,4 +1,5 @@
 #pragma once
+#include "eviction.h"
 #include "zlog/monitoring/statistics.h"
 
 namespace zlog {
@@ -14,6 +15,10 @@ struct Options {
   int entries_per_object = 200;
 
   int max_entry_size = 1024;
+
+  //cache options
+  zlog::Eviction::Eviction_Policy eviction = zlog::Eviction::Eviction_Policy::LRU;
+  size_t cache_size = 1024 * 1024 * 1;
 
   zlog::Statistics* statistics;
 };

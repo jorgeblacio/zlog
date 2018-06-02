@@ -161,7 +161,7 @@ std::string StatisticsImpl::ToString() const {
   for (const auto& t : TickersNameMap) {
     if (t.first < TICKER_ENUM_MAX || enable_internal_stats_) {
       char buffer[kTmpStrBufferSize];
-      snprintf(buffer, kTmpStrBufferSize, "%s COUNT : %" PRIu64 "\n",
+      snprintf(buffer, kTmpStrBufferSize, "%s_COUNT %" PRIu64 "\n",
                t.second.c_str(), getTickerCountLocked(t.first));
       res.append(buffer);
     }

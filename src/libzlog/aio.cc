@@ -405,8 +405,7 @@ int LogImpl::AioAppend(AioCompletion *c, const Slice& data,
    */
   assert(ret == 0);
 
-  std::string data_str = data.ToString();
-  cache->put(pposition, &data_str);
+  cache->put(pposition, data);
 
   return ret;
 }
@@ -448,8 +447,7 @@ int LogImpl::AioRead(uint64_t position, AioCompletion *c,
    */
   assert(ret == 0);
 
-  std::string data_str(*datap);
-  cache->put(&position, &data_str);
+  cache->put(&position, Slice(*datap));
 
   return ret;
 }

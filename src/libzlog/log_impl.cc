@@ -504,8 +504,8 @@ int LogImpl::Read(uint64_t position, std::string *data)
         mapping->width, mapping->max_size, data);
 
     if (!ret){
-      std::string data_copy(*data); //make a copy
-      cache->put(&position, &data_copy);
+      //std::string data_copy(*data); //make a copy
+      cache->put(&position, Slice(*data));
       return 0;
     }
 
@@ -577,8 +577,8 @@ int LogImpl::Append(const Slice& data, uint64_t *pposition)
         *pposition = position;
       }
 
-      std::string cache_str = data.ToString(); //ToString() is a copy
-      cache->put(pposition, &cache_str);
+      //std::string cache_str = data.ToString(); //ToString() is a copy
+      cache->put(pposition, data);
 
       return 0;
     }
@@ -660,8 +660,10 @@ int LogImpl::Trim(uint64_t position)
 
     int ret = backend->Trim(mapping->oid, mapping->epoch, position,
         mapping->width, mapping->max_size);
-    if (!ret)
+    if (!ret){
+      cache->remove(&position);
       return 0;
+    }
     if (ret == -ESPIPE) {
       ret = UpdateView();
       if (ret)

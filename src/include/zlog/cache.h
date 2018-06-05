@@ -34,6 +34,7 @@ class Cache{
 
         int put(uint64_t* pos, std::string* data);
         int get(uint64_t* pos, std::string* data);
+        int remove(uint64_t* pos);
 
         std::unordered_map<uint64_t, mempool::cache::string> cache_map; //FIX
 

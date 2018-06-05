@@ -660,8 +660,10 @@ int LogImpl::Trim(uint64_t position)
 
     int ret = backend->Trim(mapping->oid, mapping->epoch, position,
         mapping->width, mapping->max_size);
-    if (!ret)
+    if (!ret){
+      cache->remove(&position);
       return 0;
+    }
     if (ret == -ESPIPE) {
       ret = UpdateView();
       if (ret)

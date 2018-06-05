@@ -8,6 +8,7 @@
 #include"zlog/eviction/arc.h"
 #include"zlog/options.h"
 #include"zlog/mempool/mempool.h"
+#include"zlog/slice.h"
 
 namespace zlog{
 class Cache{
@@ -32,7 +33,7 @@ class Cache{
         }
         ~Cache();
 
-        int put(uint64_t* pos, std::string* data);
+        int put(uint64_t* pos, const Slice& data);    
         int get(uint64_t* pos, std::string* data);
         int remove(uint64_t* pos);
 

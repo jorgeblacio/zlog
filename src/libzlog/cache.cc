@@ -10,11 +10,11 @@ namespace zlog{
 
 Cache::~Cache(){}
 
-int Cache::put(uint64_t* pos, std::string* data){
-    if(options.cache_size > 0 && data->size() < options.cache_size && cache_map.find(*pos) == cache_map.end()){ 
+int Cache::put(uint64_t* pos, const Slice& data){
+    if(options.cache_size > 0 && data.size() < options.cache_size && cache_map.find(*pos) == cache_map.end()){ 
         mut.lock();
         eviction->cache_put_miss(*pos);
-        mempool::cache::string pool_data(data->data());
+        mempool::cache::string pool_data(data.data(), data.size());
         cache_map[*pos] = mempool::cache::string(pool_data);
         mut.unlock();
 
@@ -28,7 +28,7 @@ int Cache::get(uint64_t* pos, std::string* data){
     RecordTick(options.statistics, CACHE_REQS);
     auto map_it = cache_map.find(*pos);
     if(map_it != cache_map.end()){
-        data->assign((map_it->second).data());
+        data->assign((map_it->second).data(), (map_it->second).size());
         mut.lock();        
         eviction->cache_get_hit(pos);
         mut.unlock();

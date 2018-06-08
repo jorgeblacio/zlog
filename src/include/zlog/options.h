@@ -20,9 +20,8 @@ struct Options {
   zlog::Eviction::Eviction_Policy eviction = zlog::Eviction::Eviction_Policy::LRU;
   size_t cache_size = 1024 * 1024 * 1;
 
-  //zlog::Statistics* statistics = CreateCacheStatistics().get();
   std::shared_ptr<Statistics> statistics = CreateCacheStatistics();
-  //std::shared_ptr<Statistics> statistics = nullptr;
+  std::vector<std::string> http;
 };
 
 }

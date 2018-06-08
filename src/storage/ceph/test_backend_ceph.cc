@@ -74,7 +74,7 @@ void LibZLogTest::SetUp() {
   context = new Context;
   ASSERT_NO_FATAL_FAILURE(context->Init(lowlevel()));
 
-  zlog::Options options;
+  //zlog::Options options;
 
   if (lowlevel()) {
     ASSERT_TRUE(exclusive());
@@ -133,7 +133,7 @@ void LibZLogCAPITest::SetUp() {
 
   const char *keys[] = {"conf_file", "pool"};
   const char *vals[] = {"", context->pool_name.c_str()};
-  int ret = zlog_create("ceph", "c_mylog",
+  int ret = zlog_create(&options, "ceph", "c_mylog",
       keys, vals, 2, host.c_str(), port.c_str(), &log);
   ASSERT_EQ(ret, 0);
 }

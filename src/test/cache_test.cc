@@ -44,8 +44,8 @@ int main(int argc, char** argv){
         std::cout << "e.g: ./cache_test 2048" << std::endl;        
         return -1;
     }
-    auto stats = zlog::CreateCacheStatistics();
-    options.statistics = stats.get();
+    // auto stats = zlog::CreateCacheStatistics();
+    // options.statistics = stats.get();
 
     zlog::Log *log;
     int ret = zlog::Log::Open(options, "lmdb", "mylog",
@@ -86,7 +86,7 @@ int main(int argc, char** argv){
     //std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
    // std::cout << time_span.count() << " seconds." << std::endl;
 
-    std::cout << "STATISTICS:" << std::endl << stats->ToString(); 
+    std::cout << "STATISTICS:" << std::endl << options.statistics->ToString(); 
 
     assert(ret == 0);
 

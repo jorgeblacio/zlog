@@ -47,6 +47,8 @@ int main(int argc, char** argv){
     // auto stats = zlog::CreateCacheStatistics();
     // options.statistics = stats.get();
 
+    options.http = std::vector<std::string>({"listening_ports", "0.0.0.0:8081", "num_threads", "1"});
+
     zlog::Log *log;
     int ret = zlog::Log::Open(options, "lmdb", "mylog",
         {{"path", "/tmp/zlog.tmp.db"}}, "", "", &log);

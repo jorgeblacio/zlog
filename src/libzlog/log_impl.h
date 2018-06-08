@@ -37,7 +37,7 @@ class LogImpl : public Log {
     hoid(hoid),
     striper(prefix),
     options(opts),
-    metrics_http_server_({"listening_ports", "0.0.0.0:8080", "num_threads", "1"}),
+    metrics_http_server_({"listening_ports", "0.0.0.0:8081", "num_threads", "1"}),
     metrics_handler_(this)
   {
     metrics_http_server_.addHandler("/metrics", &metrics_handler_);      
@@ -128,7 +128,7 @@ class LogImpl : public Log {
 
                 bool handleGet(CivetServer *server, struct mg_connection *conn) {
 
-                    zlog::Statistics* stats = l_->options.statistics;
+                    std::shared_ptr<zlog::Statistics> stats = l_->options.statistics;
 
                     std::stringstream out_stream;
 

@@ -36,7 +36,7 @@ void LibZLogTest::SetUp() {
   ASSERT_NE(mkdtemp(context->dbpath), nullptr);
   ASSERT_GT(strlen(context->dbpath), (unsigned)0);
 
-  zlog::Options options;
+  //zlog::Options options;
 
   if (lowlevel()) {
     ASSERT_TRUE(exclusive());
@@ -69,9 +69,13 @@ void LibZLogTest::TearDown() {
 
 int LibZLogTest::reopen()
 {
-  zlog::Log *new_log = nullptr;
 
-  zlog::Options options;
+  if (log)
+    delete log;
+
+  zlog::Log *new_log = nullptr;
+  //zlog::Options options;
+
 
   if (lowlevel()) {
     auto backend = std::unique_ptr<zlog::storage::lmdb::LMDBBackend>(
@@ -95,8 +99,7 @@ int LibZLogTest::reopen()
       return ret;
   }
 
-  if (log)
-    delete log;
+  
   log = new_log;
   return 0;
 }
@@ -128,7 +131,7 @@ void LibZLogCAPITest::SetUp() {
 
   const char *keys[] = {"path"};
   const char *vals[] = {context->dbpath};
-  int ret = zlog_create("lmdb", "c_mylog",
+  int ret = zlog_create(&options, "lmdb", "c_mylog",
       keys, vals, 1, host.c_str(), port.c_str(), &log);
   ASSERT_EQ(ret, 0);
 }

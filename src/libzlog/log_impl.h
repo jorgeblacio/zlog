@@ -39,6 +39,7 @@ class LogImpl : public Log {
     options(opts),
     metrics_handler_(this)
   {
+    cache = new Cache(options);      
     if(opts.http.size() > 0){
         metrics_http_server_ = new CivetServer(opts.http);
         metrics_http_server_->addHandler("/metrics", &metrics_handler_);      

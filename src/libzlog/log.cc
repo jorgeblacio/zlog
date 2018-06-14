@@ -94,7 +94,6 @@ int Log::Create(const Options& options,
     return -EINVAL;
   }
 
-  impl->cache = new Cache(options);
 
   *logpp = impl.release();
 
@@ -150,7 +149,6 @@ int Log::Open(const Options& options,
     }
   }
 
-  impl->cache = new Cache(options);
   *logpp = impl.release();
 
 
@@ -225,7 +223,6 @@ int Log::CreateWithBackend(const Options& options,
     return -EINVAL;
   }
 
-  impl->cache = new Cache(options);
   *logptr = impl.release();
 
   return 0;
@@ -262,7 +259,6 @@ int Log::OpenWithBackend(const Options& options,
     return ret;
 
     
-  impl->cache = new Cache(options);
   *logptr = impl.release();
 
   return 0;

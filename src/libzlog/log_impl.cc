@@ -64,12 +64,12 @@ int LogImpl::Open(const std::string& scheme, const std::string& name,
 }
 
 LogImpl::~LogImpl()
-{
+{ 
   {
     std::lock_guard<std::mutex> l(lock);
     shutdown = true;
   }
-
+  
   if(metrics_http_server_){
     metrics_http_server_->removeHandler("/metrics");
     metrics_http_server_->close();
@@ -78,7 +78,6 @@ LogImpl::~LogImpl()
 
   view_update.notify_one();
   view_update_thread.join();
-
 
   delete cache;
 }

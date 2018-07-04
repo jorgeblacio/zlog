@@ -58,6 +58,11 @@ function rpms() {
 
   $SUDO $yumdnf install -y redhat-lsb-core \
     git # for packaging
+
+  spec_in="zlog.spec.in"
+  gpp_sym=" "
+  gcc_sym=" "
+
   case $(lsb_release -si) in
     Fedora)
       if test $yumdnf = yum; then
@@ -69,8 +74,24 @@ function rpms() {
       MAJOR_VERSION=$(lsb_release -rs | cut -f1 -d.)
       $SUDO yum-config-manager --add-repo https://dl.fedoraproject.org/pub/epel/$MAJOR_VERSION/x86_64/
       $SUDO yum install --nogpgcheck -y epel-release
+
       $SUDO rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-$MAJOR_VERSION
       $SUDO rm -f /etc/yum.repos.d/dl.fedoraproject.org*
+
+      if test $(lsb_release -si) = CentOS -a $MAJOR_VERSION = 7 ; then
+        $SUDO yum-config-manager --enable cr
+        case $(uname -m) in
+          x86_64)
+            $SUDO yum -y install centos-release-scl
+            # $SUDO yum -y install devtoolset-7-gcc-c++ devtoolset-7-libatomic-devel
+            sed -e 's/gcc-c++/devtoolset-7-gcc-c++/g' zlog.spec.in > ${tmp}/zlog.spec.in 
+            sed -i 's/libatomic/devtoolset-7-libatomic-devel/g' ${tmp}/zlog.spec.in
+            spec_in="${tmp}/zlog.spec.in"
+            gpp_sym="ln -sf /opt/rh/devtoolset-7/root/usr/bin/g++ /usr/bin/g++"
+            gcc_sym="ln -sf /opt/rh/devtoolset-7/root/usr/bin/gcc /usr/bin/gcc"
+            ;;
+        esac
+      fi
       ;;
     *)
       echo "unknown release"
@@ -78,9 +99,12 @@ function rpms() {
       ;;
   esac
 
-  sed -e 's/@//g' < zlog.spec.in > ${tmp}/zlog.spec
+  sed -e 's/@//g' < ${spec_in} > ${tmp}/zlog.spec
   $SUDO $builddepcmd ${tmp}/zlog.spec 2>&1 | tee ${tmp}/yum-builddep.out
   ! grep -q -i error: ${tmp}/yum-builddep.out || exit 1
+
+  eval ${gpp_sym}
+  eval ${gcc_sym}
 
   # for doc/build.sh
   $SUDO $yumdnf install -y python-virtualenv

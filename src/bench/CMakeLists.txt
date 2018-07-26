@@ -5,6 +5,7 @@ target_link_libraries(zlog_bench2
     libzlog
     zlog_seqr
     zlog_backend_ceph
+    zlog_backend_lmdb
     zlog_backend_ram
     ${Boost_PROGRAM_OPTIONS_LIBRARY}
     ${Boost_SYSTEM_LIBRARY}

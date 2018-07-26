@@ -7,20 +7,42 @@ pool="a"
 # stripe that is large enough to handle all the data for the experiment. this is
 # because in the current beta version creating a new stripe interrupts execution
 # creating throughput and latency issues.
-width=10
 
 #max_entry_size=
-#entries_per_object=
-#runtime and maxgbs
+width=1000
+entries_per_object="1024"
+runtime="12"
+entry_sizes="100 1000"
+queue_depths="2 4"
+cache_size="0 1024 65536"
+cache_eviction="0 1"
 
-entry_sizes="10 100 1000"
-queue_depths="1 2 4"
+export ZLOG_LMDB_BE_SIZE=20
+
+scanv=""
+
+if [ "$1" != "scan" ] ; then
+  rm -rf /tmp/zlog.tmp.db
+  mkdir /tmp/zlog.tmp.db
+  ./bin/create_log_lmdb
+else
+  scanv="--scan"
+fi
+
+
 
 for esize in ${entry_sizes}; do
   for qdepth in ${queue_depths}; do
-    prefix="es-${esize}.qd-${qdepth}.w-${width}"
-    bin/zlog_bench2 --pool ${pool} --width ${width} \
-      --size ${esize} --qdepth ${qdepth} \
-      --runtime 30 --prefix ${prefix}
+    for csize in ${cache_size}; do
+      for cevic in ${cache_eviction}; do
+        prefix="es-${esize}.qd-${qdepth}.w-${width}.cs-${csize}.ep-${cevic}"
+        bin/zlog_bench2 --pool ${pool} --width ${width} \
+          --size ${esize} --qdepth ${qdepth} \
+          --runtime ${runtime} --prefix ${prefix} \
+          --cache_size ${csize} --cache_eviction ${cevic} \
+          --epo ${entries_per_object} --backend lmdb --logname ${prefix} \
+          ${scanv}
+      done
+    done
   done
 done

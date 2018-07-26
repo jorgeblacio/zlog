@@ -21,6 +21,7 @@
 #include <rados/librados.hpp>
 #include "include/zlog/backend/ceph.h"
 #include "include/zlog/backend/ram.h"
+#include "include/zlog/backend/lmdb.h"
 #include "include/zlog/log.h"
 
 namespace po = boost::program_options;
@@ -33,7 +34,7 @@ class rand_data_gen {
   {}
 
   void generate() {
-    std::uniform_int_distribution<uint64_t> d(
+   std::uniform_int_distribution<uint64_t> d(
         std::numeric_limits<uint64_t>::min(),
         std::numeric_limits<uint64_t>::max());
     buf_.reserve(buf_size_);
@@ -233,12 +234,14 @@ int main(int argc, char **argv)
   int runtime;
   int qdepth;
   int width;
-  bool ram;
+  std::string backend_type;
   bool scan;
   std::string prefix;
   double max_gbs;
   int entries_per_object;
   int max_entry_size;
+  int cache_size;
+  int cache_eviction;
 
   po::options_description opts("Benchmark options");
   opts.add_options()
@@ -251,11 +254,13 @@ int main(int argc, char **argv)
     ("epo", po::value<int>(&entries_per_object)->default_value(-1), "entries per object")
     ("size,s", po::value<size_t>(&entry_size)->default_value(1024), "entry size")
     ("qdepth,q", po::value<int>(&qdepth)->default_value(1), "aio queue depth")
-    ("ram", po::bool_switch(&ram)->default_value(false), "ram backend")
+    ("backend,b", po::value<std::string>(&backend_type)->default_value("ram"), "backend")
     ("prefix", po::value<std::string>(&prefix)->default_value(""), "name prefix")
     ("verify", po::value<std::string>(&checksum_file)->default_value(""), "verify writes data")
     ("max_entry_size", po::value<int>(&max_entry_size)->default_value(-1), "max entry size")
     ("max_gbs", po::value<double>(&max_gbs)->default_value(0.0), "max gbs to write")
+    ("cache_size", po::value<int>(&cache_size)->default_value(0), "number of cache entries")
+    ("cache_eviction", po::value<int>(&cache_eviction)->default_value(0), "cache eviction policy 0:LRU 1:ARC")
   ;
 
   po::variables_map vm;
@@ -299,10 +304,15 @@ int main(int argc, char **argv)
   librados::IoCtx ioctx;
 
   std::unique_ptr<zlog::Backend> backend;
-  if (ram) {
+
+  std::cout << "Using backend: " << backend_type << std::endl;
+
+  if (!backend_type.compare("ram")) {
     backend = std::unique_ptr<zlog::storage::ram::RAMBackend>(
-        new zlog::storage::ram::RAMBackend());
-  } else {
+      new zlog::storage::ram::RAMBackend());
+      
+  }else if (!backend_type.compare("ceph")) {
+
     // connect to rados
     cluster.init(NULL);
     cluster.conf_read_file(NULL);
@@ -316,8 +326,15 @@ int main(int argc, char **argv)
 
     backend = std::unique_ptr<zlog::Backend>(
         new zlog::storage::ceph::CephBackend(&ioctx));
-  }
-
+  }else if (!backend_type.compare("lmdb")) {
+    backend = std::unique_ptr<zlog::storage::lmdb::LMDBBackend>(
+      new zlog::storage::lmdb::LMDBBackend());
+    auto raw_ptr = backend.get();
+    ((zlog::storage::lmdb::LMDBBackend*)raw_ptr)->Init("/tmp/zlog.tmp.db");
+  }else{
+    std::cout << "invalid backend" << std::endl;
+    exit(1);
+  } 
   zlog::Options options;
   if (width > 0)
     options.width = width;
@@ -327,6 +344,15 @@ int main(int argc, char **argv)
 
   if (max_entry_size <= 0)
     options.max_entry_size = entry_size;
+  
+  if (cache_size >= 0){
+    options.cache_size = cache_size;
+  }
+
+  options.eviction = (zlog::Eviction::Eviction_Policy)cache_eviction;
+
+  auto stats = zlog::CreateCacheStatistics();
+  options.statistics = stats;
 
   zlog::Log *log;
   if (scan) {
@@ -347,7 +373,8 @@ int main(int argc, char **argv)
 
   signal(SIGINT, sig_handler);
   signal(SIGALRM, sig_handler);
-  alarm(runtime);
+  if(!scan)
+    alarm(runtime);
 
   rand_data_gen dgen(1ULL << 22, entry_size);
   dgen.generate();
@@ -362,18 +389,26 @@ int main(int argc, char **argv)
   sem_init(&sem, 0, qdepth);
 
   if (scan) {
+
     uint64_t tail;
     int ret = log->CheckTail(&tail);
+
+    std::default_random_engine gen;
+    std::binomial_distribution<size_t> read_dist((double)tail/2.0);
+    uint64_t read_ops = tail * 3;
+    
+
     if (ret) {
       std::cerr << "check tail failed" << std::endl;
       stop = 1;
       exit(1);
     }
-    for (uint64_t pos = 0; pos < tail; pos++) {
+    for (uint64_t i = 0; i < read_ops; i++) {
       sem_wait(&sem);
       if (stop)
         break;
 
+      int pos = read_dist(gen);
       aio_state *io = new aio_state;
       io->c = zlog::Log::aio_create_completion(
           std::bind(handle_aio_read_cb, io));
@@ -434,6 +469,9 @@ int main(int argc, char **argv)
   reporter_thread.join();
   hdr_close(histogram);
 
+  std::cout << "CACHE STATISTICS:" << std::endl << options.statistics->ToString(); 
+
+
   if (!checksum_file.empty()) {
     std::fstream out(checksum_file, std::ios_base::out | std::ios_base::trunc);
     for (auto it = checksums.begin(); it != checksums.end();) {
@@ -443,11 +481,13 @@ int main(int argc, char **argv)
     }
   }
 
-  if (!ram) {
+  if (!backend_type.compare("ceph")) {
     ioctx.aio_flush();
     ioctx.close();
     cluster.shutdown();
   }
+
+  delete(log);
 
   return 0;
 }

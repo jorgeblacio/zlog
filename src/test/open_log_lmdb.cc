@@ -5,8 +5,8 @@ int main(int argc, char **argv)
 {
   zlog::Options options;
   zlog::Log *log;
-  int ret = zlog::Log::Open(options, "lmdb", "mylog",
-      {{"path", "/tmp/zlog.tmp.db"}}, "", "", &log);
+  int ret = zlog::Log::Open(options, "ceph", "mylog",
+      {{"pool", "javier"}}, "", "", &log);
   assert(ret == 0);
 
   uint64_t tail;

@@ -50,8 +50,8 @@ int main(int argc, char** argv){
     options.http = std::vector<std::string>({"listening_ports", "0.0.0.0:8081", "num_threads", "1"});
 
     zlog::Log *log;
-    int ret = zlog::Log::Open(options, "lmdb", "mylog",
-        {{"path", "/tmp/zlog.tmp.db"}}, "", "", &log);
+    int ret = zlog::Log::Open(options, "ceph", "mylog",
+        {{"pool", "javier"}}, "", "", &log);
     assert(ret == 0);
 
     assert(ret == 0);
@@ -75,12 +75,13 @@ int main(int argc, char** argv){
 
 
     //std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-   // for(int i = 0; i < TEST_SIZE; ++i){
-    int i = 0;
-    while(true){
+    for(int i = 0; i < TEST_SIZE; ++i){
+   // int i = 0;
+    //while(true){
         ret = log->Read(test_vector[i], &output);
-        i = (i + 1) % TEST_SIZE;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::cout << output << std::endl;
+       // i = (i + 1) % TEST_SIZE;
+        //std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     //std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 

@@ -24,7 +24,9 @@ int Cache::put(uint64_t pos, const Slice& data){
 }
 
 int Cache::get(uint64_t* pos, std::string* data){
+    #ifdef WITH_STATS
     RecordTick(options.statistics, CACHE_REQS);
+    #endif
     auto map_it = cache_map.find(*pos);
     if(map_it != cache_map.end()){
         data->assign((map_it->second).data(), (map_it->second).size());
@@ -33,7 +35,9 @@ int Cache::get(uint64_t* pos, std::string* data){
         mut.unlock();
         return 0;
     }else{
+        #ifdef WITH_STATS
         RecordTick(options.statistics, CACHE_MISSES);
+        #endif
         return 1;
     }
 }

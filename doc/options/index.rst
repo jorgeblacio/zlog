@@ -106,5 +106,5 @@ Then you will be able to read the current stats by accessing ``localhost:8080`` 
 
 .. note::
 
-	The cache statistics will only be available if zlog is built with the WITH_CACHE macro.
+	The cache statistics will only be available if zlog is built with the WITH_STATS macro.
 	You can define it using the CMake configuration ``add_definitions(-DWITH_STATS)``

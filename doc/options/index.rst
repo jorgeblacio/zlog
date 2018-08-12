@@ -73,6 +73,11 @@ The size of the cache can be configured by modifing the ``cache_size`` field:
     
 Note that this is not the size in bytes of the cache, but the maximum number of entries that will be stored at any given time on the cache.
 
+.. note::
+
+	The cache will only be available if zlog is built with the WITH_CACHE macro.
+	You can define it using the CMake configuration ``add_definitions(-DWITH_CACHE)``
+
 ################
 Cache statistics
 ################
@@ -98,3 +103,8 @@ Setup http options to expose the statistics
     options.http = std::vector<std::string>({"listening_ports", "0.0.0.0:8080", "num_threads", "1"});
     
 Then you will be able to read the current stats by accessing ``localhost:8080`` from a browser.
+
+.. note::
+
+	The cache statistics will only be available if zlog is built with the WITH_CACHE macro.
+	You can define it using the CMake configuration ``add_definitions(-DWITH_STATS)``
